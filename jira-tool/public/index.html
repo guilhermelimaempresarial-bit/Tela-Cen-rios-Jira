@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jira Cenários Tool - Automação de QA</title>
+  <style>
+    /* ===== Variáveis de tema (tons neutros) ===== */
+    :root {
+      --bg: #fafbfc;
+      --surface: #ffffff;
+      --surface-2: #f4f5f7;
+      --surface-3: #ebecf0;
+      --text: #172b4d;
+      --text-strong: #091e42;
+      --text-muted: #5e6c84;
+      --text-soft: #6b778c;
+      --text-soft-2: #7a869a;
+      --text-label: #344563;
+      --border: #dfe1e6;
+      --border-input: #c1c7d0;
+      --code-bg: #dfe1e6;
+      --shadow: rgba(9,30,66,0.08);
+      --accent: #0052cc;
+    }
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-2: #21262d;
+      --surface-3: #2d333b;
+      --text: #e6edf3;
+      --text-strong: #ffffff;
+      --text-muted: #9198a1;
+      --text-soft: #8b949e;
+      --text-soft-2: #7d8590;
+      --text-label: #c9d1d9;
+      --border: #30363d;
+      --border-input: #3d444d;
+      --code-bg: #2d333b;
+      --shadow: rgba(0,0,0,0.4);
+      --accent: #4c9aff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 1800px; width: 100%; margin: 2rem auto; padding: 0 2rem; color: var(--text); background-color: var(--bg); transition: background-color 0.2s, color 0.2s; }
+    header { margin-bottom: 1.5rem; }
+    .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+    h1 { font-size: 1.6rem; color: var(--text-strong); font-weight: 700; }
+    p.subtitle { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.2rem; }
+
+    .theme-toggle { margin-top: 0; padding: 0.5rem 1rem; background: var(--surface-2); color: var(--text-label); border: 1px solid var(--border-input); border-radius: 20px; font-weight: 600; font-size: 0.82rem; cursor: pointer; white-space: nowrap; transition: background-color 0.2s; }
+    .theme-toggle:hover { background: var(--surface-3); }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px var(--shadow); margin-bottom: 1.5rem; }
+
+    label { display: block; font-weight: 600; margin-top: 1rem; font-size: 0.85rem; color: var(--text-label); }
+    input, select, textarea { width: 100%; padding: 0.6rem; margin-top: 0.3rem; border: 1px solid var(--border-input); border-radius: 4px; font-size: 0.875rem; background: var(--bg); color: var(--text); transition: border-color 0.2s, background-color 0.2s; }
+    input:focus, select:focus, textarea:focus { border-color: #4c9aff; background: var(--surface); outline: none; box-shadow: 0 0 0 2px rgba(76,154,255,0.2); }
+    /* Autofill do Chrome: pinta o fundo na cor do tema (senão fica branco no modo escuro) */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+      -webkit-text-fill-color: var(--text);
+      -webkit-box-shadow: 0 0 0 1000px var(--bg) inset;
+      box-shadow: 0 0 0 1000px var(--bg) inset;
+      caret-color: var(--text);
+      transition: background-color 9999s ease-in-out 0s;
+    }
+    textarea { height: 260px; font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; line-height: 1.4; resize: vertical; }
+    /* Campo principal de cenários: ocupa a altura da tela e é redimensionável */
+    #cenarios { height: 62vh; min-height: 340px; font-size: 0.92rem; line-height: 1.5; }
+
+    button { margin-top: 1.5rem; padding: 0.75rem 1.8rem; background: #0052cc; color: #fff; border: none; border-radius: 4px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: background-color 0.2s; }
+    button:hover { background: #0065ff; }
+    button:disabled { background: #a5adba; cursor: not-allowed; }
+    button.secondary { background: var(--surface-2); color: var(--text-label); border: 1px solid var(--border-input); }
+    button.secondary:hover { background: var(--surface-3); }
+    button.small { padding: 0.4rem 0.9rem; font-size: 0.8rem; margin-top: 0; }
+
+    #log { margin-top: 1.5rem; padding: 1rem; background: #091e42; color: #e3e8ee; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; font-size: 0.825rem; max-height: 380px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; border: 1px solid var(--border); }
+
+    .row { display: flex; gap: 1rem; }
+    .row > div { flex: 1; }
+    .hint { font-size: 0.75rem; color: var(--text-soft); margin-top: 0.3rem; }
+
+    .tabs { display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; }
+    .tab-btn { padding: 0.7rem 1.2rem; background: none; border: none; border-bottom: 3px solid transparent; font-weight: 600; cursor: pointer; color: var(--text-muted); font-size: 0.95rem; border-radius: 0; margin-top: 0; }
+    .tab-btn:hover { color: var(--text-strong); }
+    .tab-btn.active { color: #4c9aff; border-bottom-color: #4c9aff; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .radio-group { display: flex; gap: 1.5rem; margin-top: 0.5rem; background: var(--surface-2); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border); flex-wrap: wrap; }
+    .radio-group label { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer; margin: 0; color: var(--text); }
+    .radio-group input[type="radio"] { width: auto; margin: 0; }
+
+    /* Interruptor (toggle switch) */
+    .switch-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; cursor: pointer; font-weight: 500; color: var(--text); }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; margin: 0; position: absolute; }
+    .switch .slider { position: absolute; inset: 0; background: var(--border-input); border-radius: 24px; transition: background-color 0.2s; }
+    .switch .slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+    .switch input:checked + .slider { background: #0052cc; }
+    .switch input:checked + .slider::before { transform: translateX(20px); }
+    .switch input:focus + .slider { box-shadow: 0 0 0 2px rgba(76,154,255,0.35); }
+
+    .select2-container--default .select2-selection--multiple { min-height: 42px; border: 1px solid var(--border-input); border-radius: 4px; background: var(--bg); padding: 4px 6px; }
+    .select2-container--default .select2-selection--multiple:focus-within { border-color: #4c9aff; background: var(--surface); box-shadow: 0 0 0 2px rgba(76,154,255,0.2); }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice { background: #deebff; border: 1px solid #b3d4ff; color: #0052cc; border-radius: 3px; padding: 2px 8px; font-size: 0.85rem; font-weight: 600; }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove { color: #0052cc; margin-right: 4px; }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover { color: #bf2600; }
+    .select2-container { width: 100% !important; margin-top: 0.3rem; }
+    .select2-results__option--highlighted { background: #0052cc !important; }
+    .select2-container--default .select2-selection--multiple .select2-selection__rendered { color: var(--text); }
+    .select2-container--default .select2-selection__placeholder { color: var(--text-muted); }
+    [data-theme="dark"] .select2-dropdown { background: var(--surface); border-color: var(--border-input); }
+    [data-theme="dark"] .select2-results__option { color: var(--text); background: var(--surface); }
+    [data-theme="dark"] .select2-results__option--highlighted { background: #0052cc !important; color: #fff; }
+    [data-theme="dark"] .select2-search__field { background: var(--bg); color: var(--text); }
+    .status-order-hint { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: #fffae6; border: 1px solid #ffe380; border-radius: 4px; font-size: 0.8rem; color: #172b4d; }
+    .status-order-hint .arrow { color: #0052cc; font-weight: 700; }
+
+    /* v2 - Preview e formulário estruturado */
+    .split { display: flex; gap: 1.25rem; align-items: flex-start; }
+    .split > div { flex: 1; min-width: 0; }
+    .preview-box { margin-top: 0.3rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); padding: 1rem; height: 62vh; min-height: 340px; overflow-y: auto; }
+    /* Editor expandido: textarea ocupa toda a largura e a prévia fica escondida */
+    .split.editor-full { display: block; }
+    .split.editor-full .col-preview { display: none; }
+    .split.editor-full #cenarios { height: 72vh; }
+
+    /* Responsividade: empilha colunas em telas estreitas */
+    @media (max-width: 860px) {
+      body { padding: 0 1rem; margin: 1rem auto; }
+      .row { flex-direction: column; gap: 0.5rem; }
+      .split { flex-direction: column; }
+      #cenarios, .preview-box { height: auto; min-height: 300px; }
+      #cenarios { min-height: 320px; }
+    }
+    .preview-empty { color: var(--text-soft-2); font-size: 0.85rem; text-align: center; padding: 2rem 1rem; }
+    .scn-card { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #0052cc; border-radius: 4px; padding: 0.75rem 0.9rem; margin-bottom: 0.75rem; }
+    .scn-card h4 { font-size: 0.9rem; color: var(--text-strong); margin-bottom: 0.4rem; }
+    .scn-card .sec { font-size: 0.8rem; margin-top: 0.35rem; color: var(--text-label); }
+    .scn-card .sec strong { color: var(--text-muted); }
+    .scn-card ul { margin: 0.15rem 0 0 1.1rem; }
+    .scn-card li { font-size: 0.8rem; line-height: 1.4; }
+    .warn-badge { display: inline-block; background: #fff0b3; color: #7a5b00; border: 1px solid #ffe380; font-size: 0.7rem; font-weight: 600; padding: 1px 6px; border-radius: 8px; margin-left: 0.4rem; }
+    .summary-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+    .chip { font-size: 0.78rem; padding: 3px 10px; border-radius: 12px; font-weight: 600; }
+    .chip.ok { background: #e3fcef; color: #006644; border: 1px solid #abf5d1; }
+    .chip.warn { background: #fff0b3; color: #7a5b00; border: 1px solid #ffe380; }
+    .chip.err { background: #ffebe6; color: #bf2600; border: 1px solid #ffbdad; }
+    .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem; flex-wrap: wrap; }
+    .json-view { font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; font-size: 0.78rem; white-space: pre-wrap; color: var(--text); }
+
+    .form-scn { border: 1px solid var(--border); border-radius: 6px; padding: 1rem; margin-bottom: 1rem; background: var(--bg); position: relative; }
+    .form-scn .del-btn { position: absolute; top: 0.75rem; right: 0.75rem; background: #ffebe6; color: #bf2600; border: 1px solid #ffbdad; padding: 0.25rem 0.7rem; font-size: 0.75rem; margin-top: 0; border-radius: 4px; }
+    .form-scn .del-btn:hover { background: #ffbdad; }
+    .format-help { font-size: 0.78rem; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; margin-top: 0.75rem; line-height: 1.5; }
+    .format-help code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; }
+  </style>
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <!-- Overrides do Select2 DEPOIS do CDN para vencerem por ordem de carregamento (essencial no tema escuro) -->
+  <style>
+    .select2-container--default .select2-selection--multiple {
+      background-color: var(--bg);
+      border: 1px solid var(--border-input);
+    }
+    .select2-container--default .select2-selection--multiple .select2-selection__rendered { color: var(--text); }
+    .select2-container--default .select2-selection__placeholder { color: var(--text-muted); }
+    /* Chips dos status selecionados (azul, legível nos dois temas) */
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+      background: #deebff; border: 1px solid #b3d4ff; color: #0052cc; font-weight: 600;
+    }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove { color: #0052cc; }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover { color: #bf2600; }
+    /* Dropdown de opções */
+    .select2-dropdown { background: var(--surface); border-color: var(--border-input); }
+    .select2-container--default .select2-results__option { color: var(--text); background: var(--surface); }
+    .select2-container--default .select2-results__option--highlighted[aria-selected] { background: #0052cc !important; color: #ffffff !important; }
+    .select2-container--default .select2-results__option[aria-selected=true] { background: var(--surface-2); color: var(--text-muted); }
+    .select2-search--dropdown .select2-search__field { background: var(--bg); color: var(--text); border: 1px solid var(--border-input); }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script>
+    // Aplica o tema salvo o quanto antes, evitando "flash" ao carregar
+    (function() {
+      try {
+        var saved = localStorage.getItem('jiraTool.theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div>
+      <h1>Jira Cenários Tool — Automação de QA</h1>
+      <p class="subtitle">Entrada livre de cenários, conversão inteligente em JSON e pré-visualização antes de criar no Jira</p>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+      <a class="theme-toggle" href="ajuda.html" target="_blank" title="Abrir o guia de uso" style="text-decoration:none;">❓ Como usar</a>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙 Tema escuro</button>
+    </div>
+  </div>
+</header>
+
+<!-- Credenciais Compartilhadas -->
+<div class="card">
+  <div class="row">
+    <div>
+      <label for="email">Email Jira</label>
+      <input type="email" id="email" placeholder="seu.email@nimbi.com.br">
+    </div>
+    <div>
+      <label for="token">API Token</label>
+      <input type="password" id="token" placeholder="Seu token API">
+    </div>
+  </div>
+</div>
+
+<!-- NAVEGAÇÃO DE ABAS -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('tab-criar', this)">➕ Criar Cenários</button>
+  <button class="tab-btn" onclick="switchTab('tab-mover', this)">📦 Mover Cenários</button>
+  <button class="tab-btn" onclick="switchTab('tab-status-v2', this)">🔄 Alterar Status</button>
+</div>
+
+<!-- ABA 1: CRIAR CENÁRIOS (v2) -->
+<div id="tab-criar" class="tab-content active">
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="parentKey">Issue Pai (História)</label>
+        <input type="text" id="parentKey" placeholder="Ex: COR-10179">
+      </div>
+      <div>
+        <label for="issueType">Tipo de Issue</label>
+        <input type="text" id="issueType" value="Subtask de teste">
+      </div>
+      <div>
+        <label for="statusFinalAlvo">Status Final</label>
+        <select id="statusFinalAlvo">
+          <option value="">Manter no status inicial</option>
+          <option value="em construcao">Em Construção</option>
+          <option value="especificacao concluida" selected>Especificação Concluída</option>
+          <option value="pronto para teste">Pronto para teste</option>
+          <option value="impedida construcao">Impedida Construção</option>
+          <option value="impedida teste">Impedida teste</option>
+          <option value="em teste">Em teste</option>
+          <option value="reprovado">Reprovado</option>
+          <option value="aprovado">Aprovado</option>
+          <option value="fechado">Fechado</option>
+          <option value="obsoleto">Obsoleto</option>
+        </select>
+        <p class="hint">Após criar, o sistema leva cada cenário automaticamente até este status (mesma navegação da aba Alterar Status).</p>
+      </div>
+    </div>
+
+    <label>Modo de entrada</label>
+    <div class="radio-group">
+      <label>
+        <input type="radio" name="inputMode" value="texto" checked onclick="toggleInputMode()">
+        📝 Texto livre
+      </label>
+      <label>
+        <input type="radio" name="inputMode" value="form" onclick="toggleInputMode()">
+        🧩 Formulário estruturado
+      </label>
+    </div>
+
+    <!-- MODO TEXTO LIVRE -->
+    <div id="modeTexto" style="margin-top: 1rem;">
+      <div class="split" id="editorSplit">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label for="cenarios" style="margin-top:0;">Cenários (texto livre / Gherkin / JSON)</label>
+            <button class="secondary small" id="btnExpandir" onclick="toggleEditorFull()" title="Expandir/recolher o editor">⛶ Expandir editor</button>
+          </div>
+          <textarea id="cenarios" oninput="onTextInput()" placeholder="CT-01: Filtro avançado exibido na tela
+Pré-condição:
+Usuário logado no Certifica+, tela de Minhas Conexões acessada.
+Ação:
+Abrir os filtros avançados
+Verificar opções do filtro
+Resultado Esperado:
+Filtro disponível entre os filtros avançados
+Exibe 4 opções
+
+--- ou em Gherkin ---
+
+Cenário: Filtrar por ALTO
+Dado que existem conexões com diferentes valores
+Quando eu seleciono ALTO e aplico
+Então a lista exibe somente Potencial ALTO"></textarea>
+          <div class="format-help">
+            <strong>Formatos aceitos (bem flexíveis):</strong><br>
+            • Título opcional: <code>CT-01:</code>, <code>Cenário:</code>, <code>1.</code> ou nada (gera <code>CT-01</code> automático).<br>
+            • Seções por nome ou sinônimos: <code>Pré-condição</code>/<code>Contexto</code>/<code>Dado</code>, <code>Ação</code>/<code>Passos</code>/<code>Quando</code>, <code>Resultado Esperado</code>/<code>Esperado</code>/<code>Então</code>.<br>
+            • Separe cenários com linha em branco, <code>---</code> ou novo título.<br>
+            • Pode colar um <code>JSON</code> (array de cenários) diretamente.
+          </div>
+        </div>
+        <div class="col-preview">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <label style="margin-top:0;">Pré-visualização</label>
+            <div class="toolbar" style="margin-top:0;">
+              <button class="secondary small" onclick="preview()">🔍 Pré-visualizar</button>
+              <button class="secondary small" onclick="toggleJsonView()">{ } Ver JSON</button>
+              <button class="secondary small" onclick="copyJson()">📋 Copiar JSON</button>
+            </div>
+          </div>
+          <div id="previewBox" class="preview-box">
+            <div class="preview-empty">Digite os cenários e clique em <strong>Pré-visualizar</strong> para ver como serão convertidos.</div>
+          </div>
+          <div id="summaryBar" class="summary-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODO FORMULÁRIO ESTRUTURADO -->
+    <div id="modeForm" style="margin-top: 1rem; display:none;">
+      <div id="formScenarios"></div>
+      <button class="secondary" onclick="addFormScenario()" style="margin-top:0.5rem;">➕ Adicionar cenário</button>
+    </div>
+
+    <button id="btnCriar" onclick="criar()">Criar Cenários</button>
+  </div>
+</div>
+
+<!-- ABA 2: MOVER CENÁRIOS -->
+<div id="tab-mover" class="tab-content">
+  <div class="card">
+    <div class="row">
+      <div style="flex: 0 0 230px;">
+        <label style="margin-top:0;">Como deseja selecionar?</label>
+        <label class="switch-row">
+          <span class="switch">
+            <input type="checkbox" id="moveModeToggle" onchange="toggleMoveMode()">
+            <span class="slider"></span>
+          </span>
+          <span id="moveModeLabel">Listar cenários da História</span>
+        </label>
+        <p class="hint">Ative para colar a lista de chaves manualmente.</p>
+      </div>
+      <div style="min-height: 150px;">
+        <div id="sectionSourceParent">
+          <label for="sourceParentKey" style="margin-top:0;">História Origem (Atual)</label>
+          <input type="text" id="sourceParentKey" placeholder="Ex: COR-10179">
+          <p class="hint">Digite a história origem e clique em "Buscar" para listar as sub-tasks.</p>
+        </div>
+        <div id="sectionSubtaskKeys" style="display: none;">
+          <label for="subtaskKeys" style="margin-top:0;">Chaves dos Cenários (vírgula ou linha)</label>
+          <textarea id="subtaskKeys" style="height: 90px;" placeholder="Ex: COR-10236, COR-10237"></textarea>
+          <p class="hint">Cole as chaves e clique em "Buscar" para listar os cenários.</p>
+        </div>
+      </div>
+      <div style="min-height: 150px;">
+        <label for="targetParentKey" style="margin-top:0;">Nova História Pai de Destino (Obrigatório)</label>
+        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+          <input type="text" id="targetParentKey" placeholder="Ex: COR-10200">
+          <button id="btnBuscarSubtasks" onclick="carregarSubtasksOrigem()" style="margin-top:0.3rem; padding: 0.6rem 1.5rem; white-space: nowrap; flex: none;">🔍 Buscar Issues</button>
+        </div>
+        <p class="hint">A chave da nova História Pai para onde os cenários serão vinculados.</p>
+      </div>
+    </div>
+
+    <div id="subtasksContainer" style="display:none; margin-top: 1rem; border: 1px solid var(--border); border-radius: 6px; padding: 1rem; background: var(--surface);">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem;">
+        <label style="margin:0; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:0.4rem;">
+          <input type="checkbox" id="checkAllSubtasks" onchange="toggleSelectAllSubtasks(this.checked)" checked style="width:auto; margin:0;">
+          Selecionar Todos (<span id="selectedCount">0</span>/<span id="totalCount">0</span>)
+        </label>
+        <select id="filterStatusMover" onchange="filterSubtasksByStatus()" style="width:auto; padding:0.4rem 0.6rem; font-size:0.8rem; margin:0;">
+          <option value="">Todos os status</option>
+        </select>
+      </div>
+      <div id="subtasksChecklist" style="max-height: 48vh; min-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+      </div>
+    </div>
+    <button id="btnMover" onclick="mover()">Mover Cenários Selecionados</button>
+  </div>
+</div>
+
+<!-- ABA 3: ALTERAR STATUS -->
+<div id="tab-status-v2" class="tab-content">
+  <div class="card">
+    <div class="row">
+      <div style="flex: 0 0 230px;">
+        <label style="margin-top:0;">Como deseja selecionar?</label>
+        <label class="switch-row">
+          <span class="switch">
+            <input type="checkbox" id="statusModeToggleV2" onchange="toggleStatusModeV2()">
+            <span class="slider"></span>
+          </span>
+          <span id="statusModeLabelV2">Buscar por História Pai</span>
+        </label>
+        <p class="hint">Ative para colar a lista de chaves manualmente.</p>
+      </div>
+      <div style="min-height: 150px;">
+        <div id="sectionStatusSourceParentV2">
+          <label for="statusSourceParentKeyV2" style="margin-top:0;">História Pai</label>
+          <input type="text" id="statusSourceParentKeyV2" placeholder="Ex: COR-10179">
+          <p class="hint">Busca as sub-tasks da história e permite selecionar quais terão o status alterado.</p>
+        </div>
+        <div id="sectionStatusKeysV2" style="display: none;">
+          <label for="statusIssueKeysV2" style="margin-top:0;">Chaves das Issues (vírgula ou linha)</label>
+          <textarea id="statusIssueKeysV2" style="height: 90px;" placeholder="Ex: COR-10236, COR-10237"></textarea>
+          <p class="hint">Cole as chaves exatas das issues que terão o status alterado.</p>
+        </div>
+      </div>
+      <div style="min-height: 150px;">
+        <label for="statusAlvoV2" style="margin-top:0;">Status desejado (final)</label>
+        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+          <select id="statusAlvoV2" style="width: 100%;">
+            <option value="aberto">Aberto</option>
+            <option value="em construcao">Em Construção</option>
+            <option value="impedida construcao">Impedida Construção</option>
+            <option value="especificacao concluida" selected>Especificação Concluída</option>
+            <option value="pronto para teste">Pronto para teste</option>
+            <option value="impedida teste">Impedida teste</option>
+            <option value="em teste">Em teste</option>
+            <option value="reprovado">Reprovado</option>
+            <option value="aprovado">Aprovado</option>
+            <option value="fechado">Fechado</option>
+            <option value="obsoleto">Obsoleto</option>
+          </select>
+          <button id="btnBuscarStatusV2" onclick="carregarSubtasksStatusV2()" style="margin-top:0.3rem; padding: 0.6rem 1.5rem; white-space: nowrap; flex: none;">🔍 Buscar Issues</button>
+        </div>
+        <p class="hint">O sistema leva cada issue selecionada até este status, aplicando automaticamente as transições intermediárias necessárias (a partir do status atual de cada uma).</p>
+      </div>
+    </div>
+
+    <div id="statusContainerV2" style="display:none; margin-top: 1rem; border: 1px solid var(--border); border-radius: 6px; padding: 1rem; background: var(--surface);">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem;">
+        <label style="margin:0; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:0.4rem;">
+          <input type="checkbox" id="checkAllStatusV2" onchange="toggleSelectAllStatusV2(this.checked)" checked style="width:auto; margin:0;">
+          Selecionar Todos (<span id="statusSelectedCountV2">0</span>/<span id="statusTotalCountV2">0</span>)
+        </label>
+        <select id="filterStatusAlterarV2" onchange="filterStatusByStatusV2()" style="width:auto; padding:0.4rem 0.6rem; font-size:0.8rem; margin:0;">
+          <option value="">Todos os status</option>
+        </select>
+      </div>
+      <div id="statusChecklistV2" style="max-height: 48vh; min-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+      </div>
+    </div>
+
+    <button id="btnAlterarV2" onclick="alterarV2()">🔄 Alterar Status</button>
+  </div>
+</div>
+
+<!-- PAINEL DE LOGS COMPARTILHADO -->
+<div class="card">
+  <label style="margin-top:0;">Log de Execução</label>
+  <div id="log">Pronto para executar.</div>
+</div>
+
+<script>
+const log = document.getElementById('log');
+let subtasksCarregadas = [];
+let ultimoParse = { cenarios: [], warnings: [] };
+let jsonVisible = false;
+
+function switchTab(tabId, btnEl) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  btnEl.classList.add('active');
+}
+
+// Alterna entre tema claro e escuro (persistido em localStorage)
+function applyThemeLabel() {
+  const atual = document.documentElement.getAttribute('data-theme') || 'light';
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = atual === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro';
+}
+
+function toggleTheme() {
+  const atual = document.documentElement.getAttribute('data-theme') || 'light';
+  const novo = atual === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', novo);
+  try { localStorage.setItem('jiraTool.theme', novo); } catch (e) {}
+  applyThemeLabel();
+}
+
+// Ajusta o rótulo do botão assim que a página carrega
+document.addEventListener('DOMContentLoaded', applyThemeLabel);
+
+function addLog(msg) {
+  log.textContent += msg + '\n';
+  log.scrollTop = log.scrollHeight;
+}
+
+async function jiraCall(method, endpoint, body) {
+  const resp = await fetch('/api/jira', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: document.getElementById('email').value,
+      token: document.getElementById('token').value,
+      domain: 'nimbi-portal.atlassian.net',
+      method,
+      endpoint,
+      body,
+    }),
+  });
+  const text = await resp.text();
+  try { return { status: resp.status, data: JSON.parse(text) }; }
+  catch { return { status: resp.status, data: text }; }
+}
+
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// =============================================================
+// PARSER TOLERANTE (v2)
+// =============================================================
+// Mapa de sinônimos -> seção canônica
+const SECTION_ALIASES = [
+  { sec: 'pre',       re: /^(pr[eé][\s-]?condi[cç][aã]o|pr[eé][\s-]?requisito|pre-?condition|precondition|contexto|setup|dado(?:\s+que)?|given)\s*:?\s*/i },
+  { sec: 'acao',      re: /^(a[cç][aã]o|passos?|procedimento|steps?|quando|when)\s*:?\s*/i },
+  { sec: 'resultado', re: /^(resultado\s*esperado|resultado|esperado|crit[eé]rio\s*de\s*aceite|expected(?:\s*result)?|ent[aã]o|then)\s*:?\s*/i },
+];
+
+// Detecta início de um novo cenário / título
+const TITLE_RE = /^(?:(?:CT[-\s]?\d+)|(?:cen[aá]rio(?:\s*\d+)?)|(?:scenario)|(?:teste\s*\d+)|(?:\d+[\.\)]))\s*[:\-]?\s*(.*)$/i;
+
+function matchSectionAlias(linha) {
+  for (const a of SECTION_ALIASES) {
+    const m = linha.match(a.re);
+    if (m) {
+      const resto = linha.replace(a.re, '').trim();
+      return { sec: a.sec, resto, keyword: m[1] };
+    }
+  }
+  return null;
+}
+
+// Divide o texto em blocos por: título, "---"/"===", ou linha em branco dupla
+function splitBlocos(texto) {
+  const linhas = texto.replace(/\r/g, '').split('\n');
+  const blocos = [];
+  let atual = [];
+  let ultimaVazia = false;
+
+  const flush = () => { if (atual.some(l => l.trim())) blocos.push(atual.join('\n')); atual = []; };
+
+  for (const raw of linhas) {
+    const linha = raw.trimEnd();
+    const t = linha.trim();
+
+    if (/^[-=_*]{3,}$/.test(t)) { flush(); ultimaVazia = false; continue; }
+
+    const ehTitulo = TITLE_RE.test(t) && !matchSectionAlias(t);
+    if (ehTitulo && atual.some(l => l.trim())) { flush(); }
+
+    if (t === '') {
+      // duas linhas em branco separam blocos apenas se o bloco atual tiver conteúdo
+      if (ultimaVazia && atual.some(l => l.trim())) flush();
+      ultimaVazia = true;
+    } else {
+      ultimaVazia = false;
+    }
+    atual.push(linha);
+  }
+  flush();
+  return blocos;
+}
+
+function parseBloco(bloco, indexAuto) {
+  const linhas = bloco.split('\n').map(l => l.trim()).filter(l => l);
+  if (linhas.length === 0) return null;
+
+  const warnings = [];
+  let idx = 0;
+  let summary = '';
+
+  // Título: a primeira linha é o título, exceto se já for uma seção (Pré-condição/Ação/...)
+  if (!matchSectionAlias(linhas[0])) {
+    const bruto = extrairTitulo(linhas[0]);
+    summary = garantirPrefixoCT(bruto, indexAuto);
+    if (!/^ct\b/i.test((linhas[0] || '').trim()) && !/^ct[-\s]?\d/i.test((linhas[0] || '').trim())) {
+      warnings.push('prefixo "CT" adicionado ao título');
+    }
+    idx = 1;
+  } else {
+    summary = garantirPrefixoCT('', indexAuto);
+    warnings.push('sem título — CT gerado automaticamente');
+  }
+
+  let precondition = '';
+  const action = [];
+  const expected = [];
+  let secaoAtual = null;
+
+  for (let i = idx; i < linhas.length; i++) {
+    let linha = linhas[i];
+    const alias = matchSectionAlias(linha);
+    if (alias) {
+      secaoAtual = alias.sec;
+      if (alias.resto) {
+        if (alias.sec === 'pre') precondition += (precondition ? ' ' : '') + alias.resto;
+        else if (alias.sec === 'acao') action.push(limparBullet(alias.resto));
+        else if (alias.sec === 'resultado') expected.push(limparBullet(alias.resto));
+      }
+      continue;
+    }
+    // linhas com "E ..."/"And ..." herdam a seção anterior (Gherkin)
+    linha = linha.replace(/^(e|and)\s+/i, '');
+
+    if (secaoAtual === 'pre') precondition += (precondition ? ' ' : '') + limparBullet(linha);
+    else if (secaoAtual === 'acao') action.push(limparBullet(linha));
+    else if (secaoAtual === 'resultado') expected.push(limparBullet(linha));
+    else {
+      // Sem seção declarada ainda: assume ação como padrão
+      action.push(limparBullet(linha));
+      if (secaoAtual === null) secaoAtual = 'acao';
+    }
+  }
+
+  if (!precondition) warnings.push('sem Pré-condição');
+  if (action.length === 0) warnings.push('sem Ação');
+  if (expected.length === 0) warnings.push('sem Resultado Esperado');
+
+  return { summary, precondition, action, expected, _warnings: warnings };
+}
+
+function limparBullet(linha) {
+  return linha.replace(/^[\-\*\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim();
+}
+
+// Remove marcadores comuns de título (Cenário:, Scenario:, Teste 1:, "1.", "1)") deixando só o texto
+function extrairTitulo(linha) {
+  const t = (linha || '').replace(/:$/, '').trim();
+  const semMarcador = t
+    .replace(/^(cen[aá]rio|scenario|teste)\s*\d*\s*[:\-\u2013]?\s*/i, '')
+    .replace(/^\d+[\.\)]\s*/, '')
+    .trim();
+  return semMarcador || t;
+}
+
+// Garante que o título comece com "CT". Se já tiver (CT-01, CT01, CT 01, CT:), mantém.
+// Caso contrário, adiciona o prefixo sequencial "CT-XX: ".
+function garantirPrefixoCT(summary, autoIdx) {
+  const s = (summary || '').trim();
+  const jaTemCT = /^ct\b/i.test(s) || /^ct[-\s]?\d/i.test(s);
+  if (jaTemCT) return s;
+  const prefixo = `CT-${String(autoIdx).padStart(2, '0')}`;
+  return s ? `${prefixo}: ${s}` : prefixo;
+}
+
+// Ponto de entrada: aceita JSON direto OU texto livre
+function parseEntrada(texto) {
+  const trimmed = texto.trim();
+  const warnings = [];
+
+  // Tentar JSON direto
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      let data = JSON.parse(trimmed);
+      if (!Array.isArray(data)) data = [data];
+      const cenarios = data.map((c, i) => normalizarJson(c, i + 1, warnings));
+      return { cenarios, warnings, origem: 'json' };
+    } catch (e) {
+      warnings.push('Parece JSON mas é inválido — interpretando como texto. (' + e.message + ')');
+    }
+  }
+
+  const blocos = splitBlocos(texto);
+  const cenarios = [];
+  blocos.forEach((b, i) => {
+    const c = parseBloco(b, cenarios.length + 1);
+    if (c) cenarios.push(c);
+  });
+  return { cenarios, warnings, origem: 'texto' };
+}
+
+function normalizarJson(c, autoIdx, warnings) {
+  const tituloBruto = c.summary || c.titulo || c.title || '';
+  const summary = garantirPrefixoCT(tituloBruto, autoIdx);
+  const asArray = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+  const cen = {
+    summary,
+    precondition: c.precondition || c.precondicao || c['pré-condição'] || c.contexto || '',
+    action: asArray(c.action || c.acao || c['ação'] || c.passos || c.steps),
+    expected: asArray(c.expected || c.resultado || c.esperado || c['resultado esperado']),
+    _warnings: []
+  };
+  if (!cen.precondition) cen._warnings.push('sem Pré-condição');
+  if (cen.action.length === 0) cen._warnings.push('sem Ação');
+  if (cen.expected.length === 0) cen._warnings.push('sem Resultado Esperado');
+  return cen;
+}
+
+// =============================================================
+// PRÉ-VISUALIZAÇÃO (v2)
+// =============================================================
+function coletarCenarios() {
+  const mode = document.querySelector('input[name="inputMode"]:checked').value;
+  if (mode === 'form') {
+    return { cenarios: coletarFormScenarios(), warnings: [], origem: 'form' };
+  }
+  return parseEntrada(document.getElementById('cenarios').value);
+}
+
+function onTextInput() {
+  // atualização leve do resumo enquanto digita (sem re-renderizar tudo)
+  const box = document.getElementById('previewBox');
+  if (box && box.dataset.dirty !== '1') box.dataset.dirty = '1';
+}
+
+// Alterna o editor entre modo dividido (com prévia) e modo largo (só o textarea)
+function toggleEditorFull() {
+  const split = document.getElementById('editorSplit');
+  const btn = document.getElementById('btnExpandir');
+  const full = split.classList.toggle('editor-full');
+  btn.textContent = full ? '🗗 Recolher editor' : '⛶ Expandir editor';
+}
+
+function preview() {
+  const res = coletarCenarios();
+  ultimoParse = res;
+  renderPreview(res);
+}
+
+function renderPreview(res) {
+  const box = document.getElementById('previewBox');
+  const bar = document.getElementById('summaryBar');
+  const cenarios = res.cenarios || [];
+
+  const totalWarnings = cenarios.reduce((acc, c) => acc + (c._warnings?.length || 0), 0);
+  bar.innerHTML = '';
+  bar.innerHTML += `<span class="chip ok">${cenarios.length} cenário(s)</span>`;
+  if (totalWarnings > 0) bar.innerHTML += `<span class="chip warn">${totalWarnings} aviso(s)</span>`;
+  if (cenarios.length === 0) bar.innerHTML += `<span class="chip err">nada detectado</span>`;
+  if (res.origem) bar.innerHTML += `<span class="chip ok">origem: ${res.origem}</span>`;
+
+  if (jsonVisible) { renderJson(cenarios); return; }
+
+  if (cenarios.length === 0) {
+    box.innerHTML = '<div class="preview-empty">Nenhum cenário detectado. Verifique o texto colado.</div>';
+    return;
+  }
+
+  box.innerHTML = cenarios.map(c => {
+    const warns = (c._warnings || []).length
+      ? `<span class="warn-badge">⚠ ${c._warnings.join(', ')}</span>` : '';
+    const actionList = c.action.length ? `<ul>${c.action.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>` : '<em style="color:#7a869a">—</em>';
+    const expList = c.expected.length ? `<ul>${c.expected.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : '<em style="color:#7a869a">—</em>';
+    return `<div class="scn-card">
+      <h4>${escapeHtml(c.summary)} ${warns}</h4>
+      <div class="sec"><strong>Pré-condição:</strong> ${c.precondition ? escapeHtml(c.precondition) : '<em style="color:#7a869a">—</em>'}</div>
+      <div class="sec"><strong>Ação:</strong> ${actionList}</div>
+      <div class="sec"><strong>Resultado Esperado:</strong> ${expList}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderJson(cenarios) {
+  const box = document.getElementById('previewBox');
+  const limpos = cenarios.map(({ _warnings, ...rest }) => rest);
+  box.innerHTML = `<div class="json-view">${escapeHtml(JSON.stringify(limpos, null, 2))}</div>`;
+}
+
+function toggleJsonView() {
+  jsonVisible = !jsonVisible;
+  const res = ultimoParse.cenarios?.length ? ultimoParse : coletarCenarios();
+  ultimoParse = res;
+  renderPreview(res);
+}
+
+async function copyJson() {
+  const res = coletarCenarios();
+  const limpos = (res.cenarios || []).map(({ _warnings, ...rest }) => rest);
+  const txt = JSON.stringify(limpos, null, 2);
+  try {
+    await navigator.clipboard.writeText(txt);
+    addLog('📋 JSON copiado para a área de transferência (' + limpos.length + ' cenário(s)).');
+  } catch (e) {
+    addLog('⚠️ Não foi possível copiar automaticamente. JSON abaixo:\n' + txt);
+  }
+}
+
+// =============================================================
+// FORMULÁRIO ESTRUTURADO (v2)
+// =============================================================
+function toggleInputMode() {
+  const mode = document.querySelector('input[name="inputMode"]:checked').value;
+  document.getElementById('modeTexto').style.display = mode === 'texto' ? 'block' : 'none';
+  document.getElementById('modeForm').style.display = mode === 'form' ? 'block' : 'none';
+  if (mode === 'form' && document.querySelectorAll('#formScenarios .form-scn').length === 0) {
+    addFormScenario();
+  }
+}
+
+function addFormScenario(data) {
+  data = data || { summary: '', precondition: '', action: '', expected: '' };
+  const container = document.getElementById('formScenarios');
+  const div = document.createElement('div');
+  div.className = 'form-scn';
+  div.innerHTML = `
+    <button class="del-btn" onclick="this.parentNode.remove()">✕ Remover</button>
+    <label style="margin-top:0;">Título</label>
+    <input type="text" class="fs-summary" placeholder="CT-01: Nome do cenário" value="${escapeHtml(data.summary)}">
+    <label>Pré-condição</label>
+    <textarea class="fs-pre" style="height:70px;" placeholder="Contexto necessário antes do teste">${escapeHtml(data.precondition)}</textarea>
+    <div class="row">
+      <div>
+        <label>Ação (uma por linha)</label>
+        <textarea class="fs-action" style="height:110px;" placeholder="Abrir filtros&#10;Selecionar opção">${escapeHtml(data.action)}</textarea>
+      </div>
+      <div>
+        <label>Resultado Esperado (um por linha)</label>
+        <textarea class="fs-expected" style="height:110px;" placeholder="Filtro aplicado&#10;Lista atualizada">${escapeHtml(data.expected)}</textarea>
+      </div>
+    </div>`;
+  container.appendChild(div);
+}
+
+function coletarFormScenarios() {
+  const cards = document.querySelectorAll('#formScenarios .form-scn');
+  const cenarios = [];
+  cards.forEach((card, i) => {
+    const summary = garantirPrefixoCT(card.querySelector('.fs-summary').value.trim(), i + 1);
+    const precondition = card.querySelector('.fs-pre').value.trim();
+    const action = card.querySelector('.fs-action').value.split('\n').map(l => l.trim()).filter(Boolean);
+    const expected = card.querySelector('.fs-expected').value.split('\n').map(l => l.trim()).filter(Boolean);
+    const _warnings = [];
+    if (!precondition) _warnings.push('sem Pré-condição');
+    if (action.length === 0) _warnings.push('sem Ação');
+    if (expected.length === 0) _warnings.push('sem Resultado Esperado');
+    cenarios.push({ summary, precondition, action, expected, _warnings });
+  });
+  return cenarios;
+}
+
+// =============================================================
+// BUILD DESCRIPTION (ADF do Jira) — igual v1
+// =============================================================
+function buildDescription(c) {
+  const content = [];
+  content.push({
+    type: 'panel', attrs: { panelType: 'warning' },
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Pré-condição:', marks: [{ type: 'strong' }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: c.precondition || '—' }] }
+    ]
+  });
+  content.push({
+    type: 'panel', attrs: { panelType: 'note' },
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Ação:', marks: [{ type: 'strong' }] }] },
+      { type: 'bulletList', content: (c.action.length ? c.action : ['—']).map(a => ({ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: a }] }] })) }
+    ]
+  });
+  content.push({
+    type: 'panel', attrs: { panelType: 'success' },
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Resultado Esperado:', marks: [{ type: 'strong' }] }] },
+      { type: 'bulletList', content: (c.expected.length ? c.expected : ['—']).map(e => ({ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: e }] }] })) }
+    ]
+  });
+  return { version: 1, type: 'doc', content };
+}
+
+// Executa um worker sobre uma lista com limite de concorrência (preservando índices)
+async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function runner() {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await worker(items[idx], idx);
+    }
+  }
+  const runners = Array.from({ length: Math.min(limit, items.length) }, () => runner());
+  await Promise.all(runners);
+  return results;
+}
+
+// =============================================================
+// CRIAR CENÁRIOS (v2)
+// =============================================================
+async function criar() {
+  const btn = document.getElementById('btnCriar');
+  btn.disabled = true;
+  log.textContent = '';
+
+  const parentKey = document.getElementById('parentKey').value.trim();
+  const issueType = document.getElementById('issueType').value.trim();
+  const componentName = 'QA';
+  const statusAlvoFinal = document.getElementById('statusFinalAlvo').value.trim();
+
+  const res = coletarCenarios();
+  const cenarios = res.cenarios || [];
+
+  if (cenarios.length === 0) {
+    addLog('❌ ERRO: Nenhum cenário encontrado.');
+    addLog('Use o botão "Pré-visualizar" para conferir a interpretação do texto.');
+    btn.disabled = false;
+    return;
+  }
+  if (!parentKey) { addLog('❌ ERRO: Preencha a Issue Pai'); btn.disabled = false; return; }
+
+  // Avisar sobre cenários incompletos e pedir confirmação
+  const comAvisos = cenarios.filter(c => (c._warnings || []).length > 0);
+  if (comAvisos.length > 0) {
+    const detalhe = comAvisos.map(c => `   • ${c.summary}: ${c._warnings.join(', ')}`).join('\n');
+    const ok = confirm(`Atenção: ${comAvisos.length} cenário(s) têm campos faltando:\n\n` +
+      comAvisos.map(c => `${c.summary}: ${c._warnings.join(', ')}`).join('\n') +
+      `\n\nDeseja criar mesmo assim?`);
+    addLog(`⚠️ ${comAvisos.length} cenário(s) com avisos:\n${detalhe}`);
+    if (!ok) { addLog('⏹️ Criação cancelada pelo usuário.'); btn.disabled = false; return; }
+  }
+
+  const projectKey = parentKey.split('-')[0];
+  addLog(`Criando ${cenarios.length} subtarefas em ${parentKey}...\n`);
+
+  addLog('Identificando usuário...');
+  const me = await jiraCall('GET', '/rest/api/3/myself');
+  const accountId = me.data?.accountId;
+  if (!accountId) { addLog('❌ ERRO: Não foi possível identificar o usuário. Verifique email/token.'); btn.disabled = false; return; }
+  addLog(`Usuário identificado: ${me.data?.displayName || me.data?.emailAddress || 'OK'}\n`);
+
+  // Criação em LOTE (bulk) — cria vários cenários numa única requisição, preservando a ordem.
+  // O Jira limita a 50 issues por chamada, então dividimos em lotes de 50.
+  const createdKeys = [];
+  const montarFields = (c) => ({
+    project: { key: projectKey },
+    parent: { key: parentKey },
+    summary: c.summary,
+    issuetype: { name: issueType },
+    assignee: { accountId },
+    ...(componentName ? { components: [{ name: componentName }] } : {}),
+    description: buildDescription(c),
+  });
+
+  const LOTE = 50;
+  for (let start = 0; start < cenarios.length; start += LOTE) {
+    const lote = cenarios.slice(start, start + LOTE);
+    addLog(`Criando lote de ${lote.length} cenário(s) [${start + 1}–${start + lote.length}]...`);
+
+    const resp = await jiraCall('POST', '/rest/api/3/issue/bulk', {
+      issueUpdates: lote.map(c => ({ fields: montarFields(c) }))
+    });
+
+    if (resp.data?.issues && resp.data.issues.length) {
+      resp.data.issues.forEach((iss, idx) => {
+        addLog(`   ✅ ${iss.key}: ${lote[idx]?.summary || ''}`);
+        createdKeys.push(iss.key);
+      });
+    }
+    if (resp.data?.errors && resp.data.errors.length) {
+      resp.data.errors.forEach(err => {
+        const n = typeof err.failedElementNumber === 'number' ? (start + err.failedElementNumber + 1) : '?';
+        const det = err.elementErrors ? JSON.stringify(err.elementErrors) : JSON.stringify(err);
+        addLog(`   ❌ Cenário ${n} falhou: ${det}`);
+      });
+    }
+    if (!resp.data?.issues && !resp.data?.errors) {
+      addLog(`   ❌ ERRO ${resp.status}: ${typeof resp.data === 'object' ? JSON.stringify(resp.data) : resp.data}`);
+    }
+  }
+
+  // Leva cada cenário criado até o status alvo (navegação automática, em paralelo)
+  if (statusAlvoFinal && createdKeys.length > 0) {
+    const alvoLabel = document.getElementById('statusFinalAlvo').selectedOptions[0].text;
+    addLog(`\n🎯 Levando ${createdKeys.length} cenário(s) até o status "${alvoLabel}" (em paralelo)...\n`);
+    let okT = 0, errT = 0;
+    await runWithConcurrency(createdKeys, 5, async (key) => {
+      const res = await navegarIssueParaStatus(key, statusAlvoFinal);
+      if (res.ok) {
+        const trajeto = res.passos.length ? ` (${res.passos.join(' → ')})` : '';
+        addLog(`   ✅ ${key} → "${alvoLabel}"${trajeto}`);
+        okT++;
+      } else {
+        addLog(`   ❌ ${key}: ${res.motivo}`);
+        errT++;
+      }
+    });
+    addLog(`\nStatus aplicado. OK: ${okT} | Falhas: ${errT}`);
+  }
+
+  addLog('\n✅ Concluído!');
+  btn.disabled = false;
+}
+
+// =============================================================
+// MOVER CENÁRIOS (igual v1)
+// =============================================================
+function toggleMoveMode() {
+  const lista = document.getElementById('moveModeToggle').checked;
+  document.getElementById('sectionSourceParent').style.display = lista ? 'none' : 'block';
+  document.getElementById('sectionSubtaskKeys').style.display = lista ? 'block' : 'none';
+  if (lista) document.getElementById('subtasksContainer').style.display = 'none';
+  document.getElementById('moveModeLabel').textContent = lista ? 'Digitar / Colar Lista de Chaves' : 'Listar cenários da História';
+}
+
+async function carregarSubtasksOrigem() {
+  const btn = document.getElementById('btnBuscarSubtasks');
+  const mode = document.getElementById('moveModeToggle').checked ? 'lista' : 'origem';
+  let subtaskKeys = [];
+
+  if (mode === 'origem') {
+    const sourceParent = document.getElementById('sourceParentKey').value.trim();
+    if (!sourceParent) { addLog('❌ ERRO: Informe a História Origem (ex: COR-10179)'); return; }
+
+    btn.disabled = true; btn.textContent = 'Buscando...';
+    addLog(`🔍 Buscando sub-tasks da história ${sourceParent}...`);
+
+    let resp = await jiraCall('GET', `/rest/api/3/issue/${sourceParent}?fields=subtasks,summary`);
+    if (resp.status === 200 && resp.data?.fields?.subtasks) {
+      subtaskKeys = resp.data.fields.subtasks.map(s => s.key).filter(Boolean);
+      addLog(`   Chaves encontradas: ${subtaskKeys.join(', ')}`);
+    }
+
+    if (subtaskKeys.length === 0) {
+      btn.disabled = false; btn.textContent = '🔍 Buscar';
+      document.getElementById('subtasksContainer').style.display = 'none';
+      if (resp.status !== 200) {
+        const errDetail = typeof resp.data === 'object' ? JSON.stringify(resp.data) : resp.data;
+        addLog(`❌ ERRO (Status ${resp.status}): ${errDetail}`);
+        addLog(`💡 Dica: Verifique se o Email Jira e API Token estão corretos e se a chave ${sourceParent} existe.`);
+      } else {
+        addLog(`⚠️ Nenhuma sub-task encontrada associada à história ${sourceParent}.`);
+      }
+      return;
+    }
+  } else {
+    // Modo lista: usa as chaves digitadas/coladas
+    subtaskKeys = document.getElementById('subtaskKeys').value.split(/[\s,\n]+/).map(k => k.trim()).filter(Boolean);
+    if (subtaskKeys.length === 0) { addLog('❌ ERRO: Cole ao menos uma chave de cenário (ex: COR-10236).'); return; }
+    btn.disabled = true; btn.textContent = 'Buscando...';
+    addLog(`🔍 Carregando ${subtaskKeys.length} cenário(s) informado(s)...`);
+  }
+
+  addLog(`📌 ${subtaskKeys.length} issue(s). Carregando tipo, status e transições disponíveis...`);
+  const detailPromises = subtaskKeys.map(async (key) => {
+    try {
+      const [detail, trans] = await Promise.all([
+        jiraCall('GET', `/rest/api/3/issue/${key}?fields=summary,status,issuetype`),
+        jiraCall('GET', `/rest/api/3/issue/${key}/transitions`)
+      ]);
+      const fields = detail.status === 200 && detail.data ? detail.data.fields : { summary: '', status: null };
+      const transitions = trans.status === 200 && trans.data?.transitions ? trans.data.transitions : [];
+      return { key: detail.data?.key || key, fields, transitions };
+    } catch (e) {
+      return { key, fields: { summary: '(erro ao buscar)', status: null }, transitions: [] };
+    }
+  });
+  let list = await Promise.all(detailPromises);
+
+  // No modo lista, mantém apenas issues do tipo subtarefa/subtask de teste
+  if (mode === 'lista') {
+    const antes = list.length;
+    const excluidas = list.filter(i => !ehTipoSubtarefa(i.fields?.issuetype?.name));
+    list = list.filter(i => ehTipoSubtarefa(i.fields?.issuetype?.name));
+    if (excluidas.length > 0) {
+      addLog(`🔎 ${excluidas.length} de ${antes} issue(s) ignorada(s) (tipo diferente de subtarefa/subtask): ${excluidas.map(i => `${i.key} (${i.fields?.issuetype?.name || '?'})`).join(', ')}`);
+    }
+  }
+
+  btn.disabled = false; btn.textContent = '🔍 Buscar';
+  renderSubtasksChecklist(list);
+}
+
+function renderSubtasksChecklist(list) {
+  const container = document.getElementById('subtasksContainer');
+  const checklist = document.getElementById('subtasksChecklist');
+  checklist.innerHTML = '';
+
+  const filterSelect = document.getElementById('filterStatusMover');
+  const statusSet = new Set(list.map(i => i.fields?.status?.name).filter(Boolean));
+  filterSelect.innerHTML = '<option value="">Todos os status</option>';
+  [...statusSet].sort().forEach(s => { filterSelect.innerHTML += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`; });
+
+  subtasksCarregadas = list;
+  if (subtasksCarregadas.length === 0) { container.style.display = 'none'; addLog(`⚠️ Nenhuma sub-task encontrada.`); return; }
+
+  addLog(`📌 Encontradas ${subtasksCarregadas.length} sub-task(s). Marque as que deseja mover abaixo.\n`);
+  container.style.display = 'block';
+
+  subtasksCarregadas.forEach(issue => {
+    const key = issue.key;
+    const summary = issue.fields?.summary || '';
+    const statusName = issue.fields?.status?.name || '—';
+    const transitions = issue.transitions || [];
+    const transText = transitions.map(t => `${t.name}:${t.id}`).join(', ');
+
+    const itemDiv = document.createElement('div');
+    itemDiv.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; background: var(--surface); padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px;';
+    itemDiv.setAttribute('data-status', statusName);
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'subtask-cb'; cb.value = key; cb.checked = true;
+    cb.style.cssText = 'width: auto; margin: 0; cursor: pointer;';
+    cb.onchange = updateSelectedCount;
+
+    const labelText = document.createElement('span');
+    labelText.style.cssText = 'font-size: 0.85rem; color: var(--text); cursor: pointer; flex: 1;';
+    let html = `<strong>${key}</strong>: ${escapeHtml(summary)} <span style="color:var(--text-muted); font-size:0.8rem; background:var(--surface-2); padding:2px 6px; border-radius:3px; margin-left:0.4rem;">${escapeHtml(statusName)}</span>`;
+    if (transText) html += `<br><span style="color:var(--accent); font-size:0.75rem; margin-left:1.2rem;">→ Próximas: ${escapeHtml(transText)}</span>`;
+    labelText.innerHTML = html;
+    labelText.onclick = () => { cb.checked = !cb.checked; updateSelectedCount(); };
+
+    itemDiv.appendChild(cb); itemDiv.appendChild(labelText); checklist.appendChild(itemDiv);
+  });
+
+  document.getElementById('checkAllSubtasks').checked = true;
+  updateSelectedCount();
+}
+
+function toggleSelectAllSubtasks(checked) {
+  document.querySelectorAll('#subtasksChecklist > div').forEach(item => {
+    if (item.style.display !== 'none') { const cb = item.querySelector('.subtask-cb'); if (cb) cb.checked = checked; }
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const visibleItems = document.querySelectorAll('#subtasksChecklist > div:not([style*="display: none"])');
+  const visibleCbs = Array.from(visibleItems).map(i => i.querySelector('.subtask-cb')).filter(Boolean);
+  const selectedCbs = visibleCbs.filter(cb => cb.checked);
+  document.getElementById('selectedCount').textContent = selectedCbs.length;
+  document.getElementById('totalCount').textContent = visibleCbs.length;
+  document.getElementById('checkAllSubtasks').checked = (visibleCbs.length > 0 && selectedCbs.length === visibleCbs.length);
+}
+
+function filterSubtasksByStatus() {
+  const filter = document.getElementById('filterStatusMover').value;
+  document.querySelectorAll('#subtasksChecklist > div').forEach(item => {
+    const status = item.getAttribute('data-status') || '';
+    const visible = !filter || status === filter;
+    item.style.display = visible ? 'flex' : 'none';
+    const cb = item.querySelector('.subtask-cb');
+    if (cb) cb.checked = visible;
+  });
+  document.getElementById('checkAllSubtasks').checked = true;
+  updateSelectedCount();
+}
+
+async function mover() {
+  const btn = document.getElementById('btnMover');
+  btn.disabled = true; log.textContent = '';
+
+  const targetParent = document.getElementById('targetParentKey').value.trim();
+  if (!targetParent) { addLog('❌ ERRO: Informe a Nova História Pai de Destino (ex: COR-10200)'); btn.disabled = false; return; }
+
+  const keysToMove = Array.from(document.querySelectorAll('.subtask-cb:checked')).map(cb => cb.value);
+  if (keysToMove.length === 0) { addLog('❌ ERRO: Nenhum cenário na lista. Clique em "🔍 Buscar" e marque os cenários desejados.'); btn.disabled = false; return; }
+
+  addLog(`🎯 Movendo ${keysToMove.length} cenário(s) para a nova História Pai: ${targetParent}...\n`);
+  let sucessos = 0, falhas = 0;
+  for (let i = 0; i < keysToMove.length; i++) {
+    const key = keysToMove[i];
+    addLog(`[${i + 1}/${keysToMove.length}] Movendo ${key} ➔ ${targetParent}...`);
+    const resp = await jiraCall('PUT', `/rest/api/3/issue/${key}`, { fields: { parent: { key: targetParent } } });
+    if (resp.status === 204 || resp.status === 200) { addLog('   ✅ OK'); sucessos++; }
+    else { addLog(`   ❌ ERRO ${resp.status}: ${JSON.stringify(resp.data)}`); falhas++; }
+    await new Promise(r => setTimeout(r, 400));
+  }
+  addLog(`\n✨ Concluído! Sucessos: ${sucessos} | Falhas: ${falhas}`);
+  btn.disabled = false;
+}
+
+// =============================================================
+// ALTERAR STATUS (navegação automática de status)
+// =============================================================
+// -------------------------------------------------------------
+// Motor de navegação de status (grafo do fluxo do Jira)
+// -------------------------------------------------------------
+// Normaliza nomes de status: minúsculas, sem acentos, "pra"->"para", "pronta"->"pronto"
+function normalizarStatus(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\bpra\b/g, 'para')
+    .replace(/\bpronta\b/g, 'pronto');
+}
+
+// Verifica se o tipo da issue é uma subtarefa/subtask de teste (tolerante a variações)
+function ehTipoSubtarefa(tipoNome) {
+  const t = String(tipoNome || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t.includes('subtarefa') || t.includes('subtask') || t.includes('sub tarefa') || t.includes('sub task');
+}
+
+// Grafo do fluxo: status atual -> lista de status alcançáveis diretamente
+const WORKFLOW_STATUS = {
+  'aberto': ['em construcao', 'fechado', 'obsoleto'],
+  'em construcao': ['especificacao concluida', 'impedida construcao', 'obsoleto'],
+  'impedida construcao': ['em construcao', 'obsoleto'],
+  'especificacao concluida': ['pronto para teste', 'obsoleto'],
+  'pronto para teste': ['impedida teste', 'em teste', 'obsoleto'],
+  'impedida teste': ['pronto para teste', 'em teste', 'obsoleto'],
+  'em teste': ['aprovado', 'impedida teste', 'aberto', 'reprovado', 'obsoleto'],
+  'reprovado': ['pronto para teste', 'fechado', 'obsoleto'],
+  'aprovado': ['fechado', 'obsoleto'],
+  'fechado': ['obsoleto'],
+  'obsoleto': ['aberto']
+};
+
+// BFS: menor caminho de origem até alvo (array de status, incluindo origem e alvo). null se não houver.
+function caminhoStatus(origem, alvo) {
+  origem = normalizarStatus(origem);
+  alvo = normalizarStatus(alvo);
+  if (origem === alvo) return [origem];
+  if (!(origem in WORKFLOW_STATUS)) return null;
+  const fila = [[origem]];
+  const visitados = new Set([origem]);
+  while (fila.length) {
+    const caminho = fila.shift();
+    const atual = caminho[caminho.length - 1];
+    for (const prox of (WORKFLOW_STATUS[atual] || [])) {
+      if (visitados.has(prox)) continue;
+      const novo = caminho.concat(prox);
+      if (prox === alvo) return novo;
+      visitados.add(prox);
+      fila.push(novo);
+    }
+  }
+  return null;
+}
+
+// Leva uma issue do status atual até o alvo, aplicando as transições intermediárias.
+// statusInicial (opcional) evita a 1ª chamada de status; o status é atualizado localmente a cada passo.
+async function navegarIssueParaStatus(key, alvo, statusInicial) {
+  const alvoNorm = normalizarStatus(alvo);
+  let atualNorm = statusInicial ? normalizarStatus(statusInicial) : null;
+  const passos = [];
+  let guarda = 0;
+  while (guarda++ < 15) {
+    // Só busca o status via API se ainda não souber
+    if (atualNorm === null) {
+      const detail = await jiraCall('GET', `/rest/api/3/issue/${key}?fields=status`);
+      atualNorm = normalizarStatus(detail.data?.fields?.status?.name || '');
+    }
+
+    if (atualNorm === alvoNorm) return { ok: true, key, passos };
+
+    const caminho = caminhoStatus(atualNorm, alvoNorm);
+    if (!caminho || caminho.length < 2) {
+      return { ok: false, key, motivo: `sem caminho de "${atualNorm}" até o status desejado`, passos };
+    }
+    const proximo = caminho[1];
+    const trans = await jiraCall('GET', `/rest/api/3/issue/${key}/transitions`);
+    const transicoes = (trans.status === 200 && trans.data?.transitions) ? trans.data.transitions : [];
+    const t = transicoes.find(tr => normalizarStatus(tr.to?.name) === proximo);
+    if (!t) {
+      return { ok: false, key, motivo: `transição para "${proximo}" indisponível a partir de "${atualNorm}"`, passos };
+    }
+    const r = await jiraCall('POST', `/rest/api/3/issue/${key}/transitions`, { transition: { id: t.id } });
+    if (r.status !== 204) {
+      return { ok: false, key, motivo: `erro HTTP ${r.status} ao aplicar "${t.name}": ${JSON.stringify(r.data)}`, passos };
+    }
+    passos.push(t.to?.name || proximo);
+    atualNorm = normalizarStatus(t.to?.name || proximo);
+  }
+  return { ok: false, key, motivo: 'excedeu o número máximo de transições (possível loop)', passos };
+}
+
+function toggleStatusModeV2() {
+  const lista = document.getElementById('statusModeToggleV2').checked;
+  document.getElementById('sectionStatusSourceParentV2').style.display = lista ? 'none' : 'block';
+  document.getElementById('sectionStatusKeysV2').style.display = lista ? 'block' : 'none';
+  if (lista) document.getElementById('statusContainerV2').style.display = 'none';
+  document.getElementById('statusModeLabelV2').textContent = lista ? 'Digitar / Colar Lista de Chaves' : 'Buscar por História Pai';
+}
+
+async function carregarSubtasksStatusV2() {
+  const btn = document.getElementById('btnBuscarStatusV2');
+  const mode = document.getElementById('statusModeToggleV2').checked ? 'lista' : 'origem';
+  let subtaskKeys = [];
+
+  if (mode === 'origem') {
+    const sourceParent = document.getElementById('statusSourceParentKeyV2').value.trim();
+    if (!sourceParent) { addLog('❌ ERRO: Informe a História Pai (ex: COR-10179)'); return; }
+
+    btn.disabled = true; btn.textContent = 'Buscando...';
+    addLog(`🔍 [v2] Buscando sub-tasks de ${sourceParent}...`);
+
+    let resp = await jiraCall('GET', `/rest/api/3/issue/${sourceParent}?fields=subtasks,summary`);
+    if (resp.status === 200 && resp.data?.fields?.subtasks) subtaskKeys = resp.data.fields.subtasks.map(s => s.key);
+
+    if (subtaskKeys.length === 0) {
+      btn.disabled = false; btn.textContent = '🔍 Buscar Issues';
+      document.getElementById('statusContainerV2').style.display = 'none';
+      if (resp.status !== 200) {
+        const errDetail = typeof resp.data === 'object' ? JSON.stringify(resp.data) : resp.data;
+        addLog(`❌ ERRO (Status ${resp.status}): ${errDetail}`);
+        addLog(`💡 Dica: Verifique as credenciais e se a chave ${sourceParent} existe.`);
+      } else { addLog(`⚠️ Nenhuma sub-task encontrada em ${sourceParent}.`); }
+      return;
+    }
+  } else {
+    // Modo lista: usa as chaves digitadas/coladas
+    subtaskKeys = document.getElementById('statusIssueKeysV2').value.split(/[\s,\n]+/).map(k => k.trim()).filter(Boolean);
+    if (subtaskKeys.length === 0) { addLog('❌ ERRO: Cole ao menos uma chave de issue (ex: COR-10236).'); return; }
+    btn.disabled = true; btn.textContent = 'Buscando...';
+    addLog(`� [v2] Carregando ${subtaskKeys.length} issue(s) informada(s)...`);
+  }
+
+  addLog(`📌 ${subtaskKeys.length} issue(s). Carregando tipo, status e transições disponíveis...`);
+  const detailPromises = subtaskKeys.map(async (key) => {
+    try {
+      const [detail, trans] = await Promise.all([
+        jiraCall('GET', `/rest/api/3/issue/${key}?fields=summary,status,issuetype`),
+        jiraCall('GET', `/rest/api/3/issue/${key}/transitions`)
+      ]);
+      const fields = detail.status === 200 && detail.data ? detail.data.fields : { summary: '', status: null };
+      const transitions = trans.status === 200 && trans.data?.transitions ? trans.data.transitions : [];
+      return { key: detail.data?.key || key, fields, transitions };
+    } catch (e) { return { key, fields: { summary: '(erro ao buscar)', status: null }, transitions: [] }; }
+  });
+  let list = await Promise.all(detailPromises);
+
+  // No modo lista, mantém apenas issues do tipo subtarefa/subtask de teste
+  if (mode === 'lista') {
+    const antes = list.length;
+    const excluidas = list.filter(i => !ehTipoSubtarefa(i.fields?.issuetype?.name));
+    list = list.filter(i => ehTipoSubtarefa(i.fields?.issuetype?.name));
+    if (excluidas.length > 0) {
+      addLog(`🔎 ${excluidas.length} de ${antes} issue(s) ignorada(s) (tipo diferente de subtarefa/subtask): ${excluidas.map(i => `${i.key} (${i.fields?.issuetype?.name || '?'})`).join(', ')}`);
+    }
+  }
+
+  btn.disabled = false; btn.textContent = '🔍 Buscar Issues';
+  renderStatusChecklistV2(list);
+}
+
+function renderStatusChecklistV2(list) {
+  const container = document.getElementById('statusContainerV2');
+  const checklist = document.getElementById('statusChecklistV2');
+  checklist.innerHTML = '';
+
+  const filterSelect = document.getElementById('filterStatusAlterarV2');
+  const statusSet = new Set(list.map(i => i.fields?.status?.name).filter(Boolean));
+  filterSelect.innerHTML = '<option value="">Todos os status</option>';
+  [...statusSet].sort().forEach(s => { filterSelect.innerHTML += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`; });
+
+  if (!list || list.length === 0) { container.style.display = 'none'; addLog(`⚠️ Nenhuma sub-task encontrada.`); return; }
+
+  addLog(`📌 ${list.length} sub-task(s) encontrada(s). Marque as que deseja alterar o status.\n`);
+  container.style.display = 'block';
+
+  list.forEach(issue => {
+    const key = issue.key;
+    const summary = issue.fields?.summary || '';
+    const statusName = issue.fields?.status?.name || '—';
+    const transitions = issue.transitions || [];
+    const transText = transitions.map(t => `${t.name}:${t.id}`).join(', ');
+
+    const itemDiv = document.createElement('div');
+    itemDiv.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; background: var(--surface); padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px;';
+    itemDiv.setAttribute('data-status', statusName);
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'status-cb-v2'; cb.value = key; cb.checked = true;
+    cb.setAttribute('data-status-atual', statusName);
+    cb.style.cssText = 'width: auto; margin: 0; cursor: pointer;';
+    cb.onchange = updateStatusCountV2;
+
+    const labelText = document.createElement('span');
+    labelText.style.cssText = 'font-size: 0.85rem; color: var(--text); cursor: pointer; flex: 1;';
+    let html = `<strong>${key}</strong>: ${escapeHtml(summary)} <span style="color:var(--text-muted); font-size:0.8rem; background:var(--surface-2); padding:2px 6px; border-radius:3px; margin-left:0.4rem;">${escapeHtml(statusName)}</span>`;
+    if (transText) html += `<br><span style="color:var(--accent); font-size:0.75rem; margin-left:1.2rem;">→ Próximas: ${escapeHtml(transText)}</span>`;
+    labelText.innerHTML = html;
+    labelText.onclick = () => { cb.checked = !cb.checked; updateStatusCountV2(); };
+
+    itemDiv.appendChild(cb); itemDiv.appendChild(labelText); checklist.appendChild(itemDiv);
+  });
+
+  document.getElementById('checkAllStatusV2').checked = true;
+  updateStatusCountV2();
+}
+
+function toggleSelectAllStatusV2(checked) {
+  document.querySelectorAll('#statusChecklistV2 > div').forEach(item => {
+    if (item.style.display !== 'none') { const cb = item.querySelector('.status-cb-v2'); if (cb) cb.checked = checked; }
+  });
+  updateStatusCountV2();
+}
+
+function updateStatusCountV2() {
+  const visibleItems = document.querySelectorAll('#statusChecklistV2 > div:not([style*="display: none"])');
+  const visibleCbs = Array.from(visibleItems).map(i => i.querySelector('.status-cb-v2')).filter(Boolean);
+  const selectedCbs = visibleCbs.filter(cb => cb.checked);
+  document.getElementById('statusSelectedCountV2').textContent = selectedCbs.length;
+  document.getElementById('statusTotalCountV2').textContent = visibleCbs.length;
+  document.getElementById('checkAllStatusV2').checked = (visibleCbs.length > 0 && selectedCbs.length === visibleCbs.length);
+}
+
+function filterStatusByStatusV2() {
+  const filter = document.getElementById('filterStatusAlterarV2').value;
+  document.querySelectorAll('#statusChecklistV2 > div').forEach(item => {
+    const status = item.getAttribute('data-status') || '';
+    const visible = !filter || status === filter;
+    item.style.display = visible ? 'flex' : 'none';
+    const cb = item.querySelector('.status-cb-v2');
+    if (cb) cb.checked = visible;
+  });
+  document.getElementById('checkAllStatusV2').checked = true;
+  updateStatusCountV2();
+}
+
+async function alterarV2() {
+  const btn = document.getElementById('btnAlterarV2');
+  btn.disabled = true; log.textContent = '';
+
+  const alvoSelect = document.getElementById('statusAlvoV2');
+  const alvo = alvoSelect.value;
+  const alvoLabel = alvoSelect.options[alvoSelect.selectedIndex].text;
+  if (!alvo) { addLog('❌ ERRO: Selecione o status desejado.'); btn.disabled = false; return; }
+
+  const keysToUpdate = Array.from(document.querySelectorAll('.status-cb-v2:checked')).map(cb => cb.value);
+  if (keysToUpdate.length === 0) { addLog('❌ ERRO: Nenhuma issue na lista. Clique em "🔍 Buscar Issues" e marque as desejadas.'); btn.disabled = false; return; }
+
+  addLog(`🎯 Alterando ${keysToUpdate.length} issue(s) até o status "${alvoLabel}" (em paralelo, transições automáticas por issue)...\n`);
+
+  let sucessos = 0, falhas = 0;
+  await runWithConcurrency(keysToUpdate, 5, async (key) => {
+    const cb = document.querySelector('.status-cb-v2[value="' + key + '"]');
+    const statusInicial = cb ? cb.getAttribute('data-status-atual') : null;
+    const res = await navegarIssueParaStatus(key, alvo, statusInicial);
+    if (res.ok) {
+      const trajeto = res.passos.length ? ` (${(statusInicial || '?')} → ${res.passos.join(' → ')})` : ' (já no status)';
+      addLog(`   ✅ ${key} → "${alvoLabel}"${trajeto}`);
+      sucessos++;
+    } else {
+      addLog(`   ❌ ${key}: ${res.motivo}`);
+      falhas++;
+    }
+  });
+  addLog(`\n✨ Alteração Concluída! Sucessos: ${sucessos} | Falhas: ${falhas}`);
+  btn.disabled = false;
+}
+
+// =============================================================
+// INIT
+// =============================================================
+$(document).ready(function() {
+  // A aba Alterar Status usa um <select> simples de status alvo (sem select2) — nada a inicializar aqui.
+});
+</script>
+
+</body>
+</html>
