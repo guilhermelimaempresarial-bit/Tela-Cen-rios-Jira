@@ -224,6 +224,25 @@
   </div>
 </div>
 
+<div class="card">
+  <label style="margin-top:0;">Configurar nomes das seções dos cenários</label>
+  <div class="row">
+    <div>
+      <label for="sectionLabelPre">Pré-condição</label>
+      <input type="text" id="sectionLabelPre" value="Pré-condição" placeholder="Ex: Contexto, Setup, Dado">
+    </div>
+    <div>
+      <label for="sectionLabelAcao">Ação</label>
+      <input type="text" id="sectionLabelAcao" value="Ação" placeholder="Ex: Passos, Quando">
+    </div>
+    <div>
+      <label for="sectionLabelResultado">Resultado Esperado</label>
+      <input type="text" id="sectionLabelResultado" value="Resultado Esperado" placeholder="Ex: Esperado, Então">
+    </div>
+  </div>
+  <p class="hint">Esses nomes serão usados na pré-visualização e na descrição criada no Jira. O parser continua aceitando sinônimos antigos.</p>
+</div>
+
 <!-- NAVEGAÇÃO DE ABAS -->
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('tab-criar', this)">➕ Criar Cenários</button>
@@ -521,22 +540,53 @@ function escapeHtml(str) {
 // =============================================================
 // PARSER TOLERANTE (v2)
 // =============================================================
-// Mapa de sinônimos -> seção canônica
-const SECTION_ALIASES = [
-  { sec: 'pre',       re: /^(pr[eé][\s-]?condi[cç][aã]o|pr[eé][\s-]?requisito|pre-?condition|precondition|contexto|setup|dado(?:\s+que)?|given)\s*:?\s*/i },
-  { sec: 'acao',      re: /^(a[cç][aã]o|passos?|procedimento|steps?|quando|when)\s*:?\s*/i },
-  { sec: 'resultado', re: /^(resultado\s*esperado|resultado|esperado|crit[eé]rio\s*de\s*aceite|expected(?:\s*result)?|ent[aã]o|then)\s*:?\s*/i },
-];
+const DEFAULT_SECTION_LABELS = {
+  pre: 'Pré-condição',
+  acao: 'Ação',
+  resultado: 'Resultado Esperado'
+};
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getConfiguredSectionLabels() {
+  const labels = {
+    pre: document.getElementById('sectionLabelPre')?.value || DEFAULT_SECTION_LABELS.pre,
+    acao: document.getElementById('sectionLabelAcao')?.value || DEFAULT_SECTION_LABELS.acao,
+    resultado: document.getElementById('sectionLabelResultado')?.value || DEFAULT_SECTION_LABELS.resultado,
+  };
+  labels.pre = (labels.pre || DEFAULT_SECTION_LABELS.pre).trim() || DEFAULT_SECTION_LABELS.pre;
+  labels.acao = (labels.acao || DEFAULT_SECTION_LABELS.acao).trim() || DEFAULT_SECTION_LABELS.acao;
+  labels.resultado = (labels.resultado || DEFAULT_SECTION_LABELS.resultado).trim() || DEFAULT_SECTION_LABELS.resultado;
+  return labels;
+}
+
+function buildSectionAliases(customLabels = getConfiguredSectionLabels()) {
+  const labels = {
+    pre: customLabels.pre || DEFAULT_SECTION_LABELS.pre,
+    acao: customLabels.acao || DEFAULT_SECTION_LABELS.acao,
+    resultado: customLabels.resultado || DEFAULT_SECTION_LABELS.resultado,
+  };
+
+  return [
+    { sec: 'pre', re: new RegExp('^(?:' + [labels.pre, 'Pré-condição', 'Pré-requisito', 'Contexto', 'Setup', 'Dado', 'Given', 'Precondition', 'precondition'].map(escapeRegExp).join('|') + ')\\s*:?\\s*', 'i') },
+    { sec: 'acao', re: new RegExp('^(?:' + [labels.acao, 'Ação', 'Passos', 'Procedimento', 'Steps', 'Quando', 'When', 'Acao', 'ação'].map(escapeRegExp).join('|') + ')\\s*:?\\s*', 'i') },
+    { sec: 'resultado', re: new RegExp('^(?:' + [labels.resultado, 'Resultado Esperado', 'Esperado', 'Critério de aceite', 'Expected', 'Then', 'Então', 'Resultado'].map(escapeRegExp).join('|') + ')\\s*:?\\s*', 'i') },
+  ];
+}
+
+const SECTION_ALIASES = buildSectionAliases();
 
 // Detecta início de um novo cenário / título
 const TITLE_RE = /^(?:(?:CT[-\s]?\d+)|(?:cen[aá]rio(?:\s*\d+)?)|(?:scenario)|(?:teste\s*\d+)|(?:\d+[\.\)]))\s*[:\-]?\s*(.*)$/i;
 
 function matchSectionAlias(linha) {
-  for (const a of SECTION_ALIASES) {
+  for (const a of buildSectionAliases()) {
     const m = linha.match(a.re);
     if (m) {
       const resto = linha.replace(a.re, '').trim();
-      return { sec: a.sec, resto, keyword: m[1] };
+      return { sec: a.sec, resto, keyword: m[0].trim() };
     }
   }
   return null;
@@ -624,9 +674,10 @@ function parseBloco(bloco, indexAuto) {
     }
   }
 
-  if (!precondition) warnings.push('sem Pré-condição');
-  if (action.length === 0) warnings.push('sem Ação');
-  if (expected.length === 0) warnings.push('sem Resultado Esperado');
+  const labels = getConfiguredSectionLabels();
+  if (!precondition) warnings.push('sem ' + labels.pre);
+  if (action.length === 0) warnings.push('sem ' + labels.acao);
+  if (expected.length === 0) warnings.push('sem ' + labels.resultado);
 
   return { summary, precondition, action, expected, _warnings: warnings };
 }
@@ -692,9 +743,10 @@ function normalizarJson(c, autoIdx, warnings) {
     expected: asArray(c.expected || c.resultado || c.esperado || c['resultado esperado']),
     _warnings: []
   };
-  if (!cen.precondition) cen._warnings.push('sem Pré-condição');
-  if (cen.action.length === 0) cen._warnings.push('sem Ação');
-  if (cen.expected.length === 0) cen._warnings.push('sem Resultado Esperado');
+  const labels = getConfiguredSectionLabels();
+  if (!cen.precondition) cen._warnings.push('sem ' + labels.pre);
+  if (cen.action.length === 0) cen._warnings.push('sem ' + labels.acao);
+  if (cen.expected.length === 0) cen._warnings.push('sem ' + labels.resultado);
   return cen;
 }
 
@@ -733,6 +785,7 @@ function renderPreview(res) {
   const box = document.getElementById('previewBox');
   const bar = document.getElementById('summaryBar');
   const cenarios = res.cenarios || [];
+  const labels = getConfiguredSectionLabels();
 
   const totalWarnings = cenarios.reduce((acc, c) => acc + (c._warnings?.length || 0), 0);
   bar.innerHTML = '';
@@ -755,9 +808,9 @@ function renderPreview(res) {
     const expList = c.expected.length ? `<ul>${c.expected.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : '<em style="color:#7a869a">—</em>';
     return `<div class="scn-card">
       <h4>${escapeHtml(c.summary)} ${warns}</h4>
-      <div class="sec"><strong>Pré-condição:</strong> ${c.precondition ? escapeHtml(c.precondition) : '<em style="color:#7a869a">—</em>'}</div>
-      <div class="sec"><strong>Ação:</strong> ${actionList}</div>
-      <div class="sec"><strong>Resultado Esperado:</strong> ${expList}</div>
+      <div class="sec"><strong>${escapeHtml(labels.pre)}:</strong> ${c.precondition ? escapeHtml(c.precondition) : '<em style="color:#7a869a">—</em>'}</div>
+      <div class="sec"><strong>${escapeHtml(labels.acao)}:</strong> ${actionList}</div>
+      <div class="sec"><strong>${escapeHtml(labels.resultado)}:</strong> ${expList}</div>
     </div>`;
   }).join('');
 }
@@ -844,25 +897,26 @@ function coletarFormScenarios() {
 // BUILD DESCRIPTION (ADF do Jira) — igual v1
 // =============================================================
 function buildDescription(c) {
+  const labels = getConfiguredSectionLabels();
   const content = [];
   content.push({
     type: 'panel', attrs: { panelType: 'warning' },
     content: [
-      { type: 'paragraph', content: [{ type: 'text', text: 'Pré-condição:', marks: [{ type: 'strong' }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: labels.pre + ':', marks: [{ type: 'strong' }] }] },
       { type: 'paragraph', content: [{ type: 'text', text: c.precondition || '—' }] }
     ]
   });
   content.push({
     type: 'panel', attrs: { panelType: 'note' },
     content: [
-      { type: 'paragraph', content: [{ type: 'text', text: 'Ação:', marks: [{ type: 'strong' }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: labels.acao + ':', marks: [{ type: 'strong' }] }] },
       { type: 'bulletList', content: (c.action.length ? c.action : ['—']).map(a => ({ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: a }] }] })) }
     ]
   });
   content.push({
     type: 'panel', attrs: { panelType: 'success' },
     content: [
-      { type: 'paragraph', content: [{ type: 'text', text: 'Resultado Esperado:', marks: [{ type: 'strong' }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: labels.resultado + ':', marks: [{ type: 'strong' }] }] },
       { type: 'bulletList', content: (c.expected.length ? c.expected : ['—']).map(e => ({ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: e }] }] })) }
     ]
   });
