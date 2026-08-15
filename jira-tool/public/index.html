@@ -224,23 +224,28 @@
   </div>
 </div>
 
-<div class="card">
-  <label style="margin-top:0;">Configurar nomes das seções dos cenários</label>
-  <div class="row">
-    <div>
-      <label for="sectionLabelPre">Pré-condição</label>
-      <input type="text" id="sectionLabelPre" value="Pré-condição" placeholder="Ex: Contexto, Setup, Dado">
-    </div>
-    <div>
-      <label for="sectionLabelAcao">Ação</label>
-      <input type="text" id="sectionLabelAcao" value="Ação" placeholder="Ex: Passos, Quando">
-    </div>
-    <div>
-      <label for="sectionLabelResultado">Resultado Esperado</label>
-      <input type="text" id="sectionLabelResultado" value="Resultado Esperado" placeholder="Ex: Esperado, Então">
-    </div>
+<div class="card" id="sectionConfigCard">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+    <label style="margin-top:0; margin-bottom:0;">Configurar nomes das seções dos cenários</label>
+    <button class="secondary small" id="toggleSectionConfig" type="button" onclick="toggleSectionConfig()">Mostrar</button>
   </div>
-  <p class="hint">Esses nomes serão usados na pré-visualização e na descrição criada no Jira. O parser continua aceitando sinônimos antigos.</p>
+  <div id="sectionConfigBody" style="display:none;">
+    <div class="row">
+      <div>
+        <label for="sectionLabelPre">Pré-condição</label>
+        <input type="text" id="sectionLabelPre" value="Pré-condição" placeholder="Ex: Contexto, Setup, Dado">
+      </div>
+      <div>
+        <label for="sectionLabelAcao">Ação</label>
+        <input type="text" id="sectionLabelAcao" value="Ação" placeholder="Ex: Passos, Quando">
+      </div>
+      <div>
+        <label for="sectionLabelResultado">Resultado Esperado</label>
+        <input type="text" id="sectionLabelResultado" value="Resultado Esperado" placeholder="Ex: Esperado, Então">
+      </div>
+    </div>
+    <p class="hint">Esses nomes serão usados na pré-visualização e na descrição criada no Jira. O parser continua aceitando sinônimos antigos.</p>
+  </div>
 </div>
 
 <!-- NAVEGAÇÃO DE ABAS -->
@@ -490,6 +495,14 @@ function switchTab(tabId, btnEl) {
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById(tabId).classList.add('active');
   btnEl.classList.add('active');
+}
+
+function toggleSectionConfig() {
+  const body = document.getElementById('sectionConfigBody');
+  const btn = document.getElementById('toggleSectionConfig');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? 'Mostrar' : 'Ocultar';
 }
 
 // Alterna entre tema claro e escuro (persistido em localStorage)

@@ -147,6 +147,33 @@ Preencha uma vez e pode usar qualquer aba. ✅
 
 ---
 
+## 4.1 Configurar nomes das seções dos cenários
+
+Em algumas equipes, os QAs usam nomes diferentes para as partes do cenário. Para facilitar esse uso, a ferramenta tem um bloco de configuração escondido por padrão.
+
+### Como usar:
+1. Vá até a parte superior da tela, logo abaixo dos campos de email e token.
+2. Clique no botão **"Mostrar"**.
+3. Você vai ver 3 campos:
+   - **Pré-condição**
+   - **Ação**
+   - **Resultado Esperado**
+4. Altere os nomes conforme a convenção da sua equipe.
+
+### Exemplos:
+- Pré-condição → `Contexto`
+- Ação → `Passos`
+- Resultado Esperado → `Resultado`
+
+### O que isso muda:
+- a **pré-visualização** vai mostrar os nomes configurados;
+- a **descrição no Jira** vai usar esses mesmos nomes;
+- o parser continua aceitando os nomes antigos e sinônimos (como `Dado`, `Quando`, `Então`, `Contexto`, `Passos`, `Esperado`), então a ferramenta continua sendo flexível.
+
+> 💡 Se você não mexer nisso, os nomes padrão continuam sendo `Pré-condição`, `Ação` e `Resultado Esperado`.
+
+---
+
 ## 5. Aba "Criar Cenários"
 
 Serve para **criar vários cenários de teste (subtarefas)** dentro de uma história de uma vez só.
