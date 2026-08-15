@@ -1,95 +1,225 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Jira Tool V2 - Login</title>
   <style>
+    :root {
+      --bg: #fafbfc;
+      --surface: #ffffff;
+      --text: #172b4d;
+      --text-strong: #091e42;
+      --text-muted: #5e6c84;
+      --border: #dfe1e6;
+      --border-input: #c1c7d0;
+      --accent: #0052cc;
+      --accent-hover: #0065ff;
+    }
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --text: #e6edf3;
+      --text-strong: #ffffff;
+      --text-muted: #9198a1;
+      --border: #30363d;
+      --border-input: #3d444d;
+      --accent: #4c9aff;
+      --accent-hover: #58a6ff;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: var(--bg);
+      color: var(--text);
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      padding: 20px;
+      transition: background-color 0.2s, color 0.2s;
     }
+    .page-wrapper { width: 100%; display: flex; flex-direction: column; align-items: center; }
+    header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .logo { font-size: 1.2rem; font-weight: 700; }
+    .header-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .header-links a, .header-links button {
+      padding: 0.6rem 1.2rem;
+      background: var(--surface);
+      border: 1px solid var(--border-input);
+      color: var(--accent);
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .header-links button { background: transparent; }
+    .header-links a:hover, .header-links button:hover { background: var(--border); }
     .container {
       width: min(460px, 90vw);
-      background: #111827;
-      border: 1px solid #334155;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 12px;
       padding: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
     }
-    h1 { margin-top: 0; font-size: 1.8rem; }
-    label { display: block; margin-top: 12px; font-size: 0.9rem; color: #cbd5e1; }
+    h1 { margin-top: 0; font-size: 1.8rem; color: var(--text-strong); }
+    label { display: block; margin-top: 12px; font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
     input {
       width: 100%;
       margin-top: 6px;
       padding: 12px;
       border-radius: 8px;
-      border: 1px solid #475569;
-      background: #0f172a;
-      color: #f8fafc;
+      border: 1px solid var(--border-input);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 1rem;
+      transition: border-color 0.2s;
     }
-    button {
+    input:focus { border-color: var(--accent); outline: none; }
+    button.primary {
       width: 100%;
       margin-top: 16px;
       padding: 12px;
       border: none;
       border-radius: 8px;
-      background: #2563eb;
+      background: var(--accent);
       color: white;
       font-weight: 700;
+      font-size: 1rem;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
+    button.primary:hover { background: var(--accent-hover); }
+    button.primary:disabled { background: #a5adba; cursor: not-allowed; }
     .secondary {
-      background: #1e293b;
-      border: 1px solid #475569;
+      background: var(--border) !important;
+      color: var(--text-muted) !important;
+      border: 1px solid var(--border-input) !important;
       margin-top: 8px;
     }
-    .muted { color: #94a3b8; font-size: 0.82rem; }
-    .message { margin-top: 12px; font-size: 0.9rem; min-height: 20px; }
-    .error { color: #fca5a5; }
-    .success { color: #86efac; }
-    .toggle { margin-top: 16px; text-align: center; font-size: 0.9rem; }
-    .toggle button { width: auto; background: transparent; color: #93c5fd; border: none; margin-top: 0; }
+    .secondary:hover { background: var(--border-input) !important; }
+    .muted { color: var(--text-muted); font-size: 0.82rem; }
+    .message { 
+      margin-top: 12px; 
+      font-size: 0.9rem; 
+      min-height: 20px; 
+      padding: 12px; 
+      border-radius: 6px;
+      display: none;
+    }
+    .message.error { 
+      background: #fee2e2; 
+      color: #991b1b; 
+      border: 1px solid #fecaca; 
+      display: block;
+    }
+    [data-theme="dark"] .message.error {
+      background: #7f1d1d;
+      color: #fca5a5;
+      border: 1px solid #991b1b;
+    }
+    .message.success { 
+      background: #dcfce7; 
+      color: #166534; 
+      border: 1px solid #86efac; 
+      display: block;
+    }
+    [data-theme="dark"] .message.success {
+      background: #166534;
+      color: #86efac;
+      border: 1px solid #15803d;
+    }
   </style>
+  <script>
+    (function() {
+      try {
+        const saved = localStorage.getItem('jiraTool.theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
-  <div class="container">
-    <h1 id="formTitle">Login</h1>
-    <div id="registerFields" style="display:none;">
-      <label>Nome</label>
-      <input id="name" type="text" placeholder="Seu nome" />
+  <div class="page-wrapper">
+    <header>
+      <div class="logo">🔐 Jira Tool V2</div>
+      <div class="header-links">
+        <a href="login-help.html" target="_blank" title="Abrir guia de uso">❓ Como usar</a>
+        <button id="themeToggle" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙 Tema escuro</button>
+      </div>
+    </header>
+
+    <div class="container">
+      <h1 id="formTitle">Login</h1>
+      <p class="muted" id="formSubtitle">Acesse sua conta para usar a ferramenta</p>
+      
+      <div id="registerFields" style="display:none;">
+        <label for="name">Nome</label>
+        <input id="name" type="text" placeholder="Seu nome completo" />
+      </div>
+      
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="seu.email@empresa.com" />
+      
+      <label for="password">Senha</label>
+      <input id="password" type="password" placeholder="Sua senha" />
+      
+      <div id="registerExtra" style="display:none;">
+        <label for="jiraEmail">Email Jira</label>
+        <input id="jiraEmail" type="email" placeholder="seu.email@empresa.com" />
+        <p class="muted">Email que você usa na API do Jira</p>
+        
+        <label for="jiraToken">Token Jira</label>
+        <input id="jiraToken" type="password" placeholder="Seu token da API do Jira" />
+        <p class="muted">Gere em: https://id.atlassian.com/manage-profile/security/api-tokens</p>
+        
+        <label for="jiraDomain">Domínio Jira</label>
+        <input id="jiraDomain" type="text" value="nimbi-portal.atlassian.net" placeholder="ex: nimbi-portal.atlassian.net" />
+        <p class="muted">Deixe em branco para usar o padrão</p>
+      </div>
+      
+      <button class="primary" id="submitBtn" onclick="submitForm()">Entrar</button>
+      <button class="secondary" id="toggleBtn" onclick="toggleMode()">Quero me cadastrar</button>
+      
+      <div id="message" class="message"></div>
     </div>
-    <label>Email</label>
-    <input id="email" type="email" placeholder="qa@empresa.com" />
-    <label>Senha</label>
-    <input id="password" type="password" placeholder="Sua senha" />
-    <div id="registerExtra" style="display:none;">
-      <label>Email Jira</label>
-      <input id="jiraEmail" type="email" placeholder="qa@empresa.com" />
-      <label>Token Jira</label>
-      <input id="jiraToken" type="password" placeholder="Token da API do Jira" />
-      <label>Domínio Jira</label>
-      <input id="jiraDomain" type="text" value="nimbi-portal.atlassian.net" placeholder="nimbi-portal.atlassian.net" />
-    </div>
-    <button id="submitBtn" onclick="submitForm()">Entrar</button>
-    <button class="secondary" onclick="toggleMode()" id="toggleBtn">Quero me cadastrar</button>
-    <div id="message" class="message"></div>
   </div>
 
   <script>
     let isRegister = false;
 
-    function setMessage(text, type='') {
+    function updateThemeButton() {
+      const atual = document.documentElement.getAttribute('data-theme') || 'light';
+      const btn = document.getElementById('themeToggle');
+      if (btn) btn.textContent = atual === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro';
+    }
+
+    function toggleTheme() {
+      const atual = document.documentElement.getAttribute('data-theme') || 'light';
+      const novo = atual === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', novo);
+      try { localStorage.setItem('jiraTool.theme', novo); } catch (e) {}
+      updateThemeButton();
+    }
+
+    function setMessage(text, type = '') {
       const el = document.getElementById('message');
       el.textContent = text;
       el.className = 'message ' + (type ? type : '');
+      el.style.display = text ? 'block' : 'none';
     }
 
     function toggleMode() {
@@ -97,6 +227,7 @@
       document.getElementById('registerFields').style.display = isRegister ? 'block' : 'none';
       document.getElementById('registerExtra').style.display = isRegister ? 'block' : 'none';
       document.getElementById('formTitle').textContent = isRegister ? 'Cadastro' : 'Login';
+      document.getElementById('formSubtitle').textContent = isRegister ? 'Crie sua conta para começar a usar' : 'Acesse sua conta para usar a ferramenta';
       document.getElementById('submitBtn').textContent = isRegister ? 'Cadastrar' : 'Entrar';
       document.getElementById('toggleBtn').textContent = isRegister ? 'Já tenho conta' : 'Quero me cadastrar';
       setMessage('');
@@ -115,22 +246,44 @@
         payload.jiraDomain = document.getElementById('jiraDomain').value.trim();
       }
 
-      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        setMessage(result.error || 'Falha ao processar autenticação.', 'error');
+      if (!payload.email || !payload.password) {
+        setMessage('Email e senha são obrigatórios.', 'error');
         return;
       }
 
-      setMessage(isRegister ? 'Cadastro realizado com sucesso.' : 'Login realizado com sucesso.', 'success');
-      setTimeout(() => window.location.href = '/', 600);
+      if (isRegister && (!payload.name || !payload.jiraEmail || !payload.jiraToken)) {
+        setMessage('Todos os campos de cadastro são obrigatórios.', 'error');
+        return;
+      }
+
+      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          setMessage(result.error || 'Falha ao processar autenticação.', 'error');
+          return;
+        }
+
+        setMessage(isRegister ? 'Cadastro realizado! Redirecionando...' : 'Login bem-sucedido! Redirecionando...', 'success');
+        setTimeout(() => window.location.href = '/', 800);
+      } catch (error) {
+        setMessage('Erro de conexão. Tente novamente.', 'error');
+        console.error(error);
+      }
     }
+
+    document.getElementById('password').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') submitForm();
+    });
+
+    document.addEventListener('DOMContentLoaded', updateThemeButton);
   </script>
 </body>
 </html>
