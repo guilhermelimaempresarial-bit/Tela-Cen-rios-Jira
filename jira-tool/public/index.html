@@ -203,48 +203,24 @@
       <h1>Jira Cenários Tool — Automação de QA</h1>
       <p class="subtitle">Entrada livre de cenários, conversão inteligente em JSON e pré-visualização antes de criar no Jira</p>
     </div>
-    <div style="display:flex; gap:0.5rem; align-items:center;">
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
       <a class="theme-toggle" href="ajuda.html" target="_blank" title="Abrir o guia de uso" style="text-decoration:none;">❓ Como usar</a>
+      <a class="theme-toggle" href="/profile.html" title="Abrir perfil do usuário" style="text-decoration:none;">⚙️ Perfil</a>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙 Tema escuro</button>
     </div>
   </div>
 </header>
 
-<!-- Credenciais Compartilhadas -->
+<!-- Sessão do usuário -->
 <div class="card">
   <div class="row">
     <div>
-      <label for="email">Email Jira</label>
-      <input type="email" id="email" placeholder="seu.email@nimbi.com.br">
+      <label>Usuário autenticado</label>
+      <div id="sessionUserInfo" class="hint" style="margin-top:0.5rem; color: var(--text-strong); font-weight:600;">Verificando sessão...</div>
     </div>
-    <div>
-      <label for="token">API Token</label>
-      <input type="password" id="token" placeholder="Seu token API">
+    <div style="display:flex; align-items:flex-end; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
+      <button class="secondary small" id="btnLogout" type="button" onclick="logout()">Sair</button>
     </div>
-  </div>
-</div>
-
-<div class="card" id="sectionConfigCard">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
-    <label style="margin-top:0; margin-bottom:0;">Configurar nomes das seções dos cenários</label>
-    <button class="secondary small" id="toggleSectionConfig" type="button" onclick="toggleSectionConfig()">Mostrar</button>
-  </div>
-  <div id="sectionConfigBody" style="display:none;">
-    <div class="row">
-      <div>
-        <label for="sectionLabelPre">Pré-condição</label>
-        <input type="text" id="sectionLabelPre" value="Pré-condição" placeholder="Ex: Contexto, Setup, Dado">
-      </div>
-      <div>
-        <label for="sectionLabelAcao">Ação</label>
-        <input type="text" id="sectionLabelAcao" value="Ação" placeholder="Ex: Passos, Quando">
-      </div>
-      <div>
-        <label for="sectionLabelResultado">Resultado Esperado</label>
-        <input type="text" id="sectionLabelResultado" value="Resultado Esperado" placeholder="Ex: Esperado, Então">
-      </div>
-    </div>
-    <p class="hint">Esses nomes serão usados na pré-visualização e na descrição criada no Jira. O parser continua aceitando sinônimos antigos.</p>
   </div>
 </div>
 
@@ -283,6 +259,30 @@
           <option value="obsoleto">Obsoleto</option>
         </select>
         <p class="hint">Após criar, o sistema leva cada cenário automaticamente até este status (mesma navegação da aba Alterar Status).</p>
+      </div>
+    </div>
+
+    <div class="card" id="sectionConfigCard" style="margin-top:1rem; margin-bottom:0; background: var(--surface-2);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+        <label style="margin-top:0; margin-bottom:0;">Configurar nomes das seções dos cenários</label>
+        <button class="secondary small" id="toggleSectionConfig" type="button" onclick="toggleSectionConfig()">Mostrar</button>
+      </div>
+      <div id="sectionConfigBody" style="display:none;">
+        <div class="row">
+          <div>
+            <label for="sectionLabelPre">Pré-condição</label>
+            <input type="text" id="sectionLabelPre" value="Pré-condição" placeholder="Ex: Contexto, Setup, Dado">
+          </div>
+          <div>
+            <label for="sectionLabelAcao">Ação</label>
+            <input type="text" id="sectionLabelAcao" value="Ação" placeholder="Ex: Passos, Quando">
+          </div>
+          <div>
+            <label for="sectionLabelResultado">Resultado Esperado</label>
+            <input type="text" id="sectionLabelResultado" value="Resultado Esperado" placeholder="Ex: Esperado, Então">
+          </div>
+        </div>
+        <p class="hint">Esses nomes serão usados na pré-visualização e na descrição criada no Jira. O parser continua aceitando sinônimos antigos.</p>
       </div>
     </div>
 
@@ -521,7 +521,33 @@ function toggleTheme() {
 }
 
 // Ajusta o rótulo do botão assim que a página carrega
-document.addEventListener('DOMContentLoaded', applyThemeLabel);
+document.addEventListener('DOMContentLoaded', async () => {
+  applyThemeLabel();
+  await checkSession();
+});
+
+async function checkSession() {
+  try {
+    const resp = await fetch('/api/auth/session');
+    const result = await resp.json();
+    const info = document.getElementById('sessionUserInfo');
+    if (!result.authenticated) {
+      window.location.href = '/login.html';
+      return;
+    }
+
+    if (info) {
+      info.textContent = `${result.user.name} · ${result.user.jiraEmail}`;
+    }
+  } catch (error) {
+    window.location.href = '/login.html';
+  }
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+}
 
 function addLog(msg) {
   log.textContent += msg + '\n';
@@ -532,14 +558,7 @@ async function jiraCall(method, endpoint, body) {
   const resp = await fetch('/api/jira', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: document.getElementById('email').value,
-      token: document.getElementById('token').value,
-      domain: 'nimbi-portal.atlassian.net',
-      method,
-      endpoint,
-      body,
-    }),
+    body: JSON.stringify({ method, endpoint, body }),
   });
   const text = await resp.text();
   try { return { status: resp.status, data: JSON.parse(text) }; }

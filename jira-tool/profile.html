@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jira Tool V2 - Perfil</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      width: min(600px, 90vw);
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 1.8rem; }
+    .header a { color: #93c5fd; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+    .header a:hover { color: #60a5fa; }
+    label { display: block; margin-top: 16px; font-size: 0.9rem; color: #cbd5e1; }
+    input, select { width: 100%; margin-top: 6px; padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; }
+    input:focus, select:focus { border-color: #2563eb; outline: none; }
+    input[readonly] { background: #1e293b; cursor: not-allowed; color: #94a3b8; }
+    button { width: 100%; margin-top: 16px; padding: 12px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #64748b; cursor: not-allowed; }
+    .secondary { background: #1e293b; border: 1px solid #475569; color: #cbd5e1; margin-top: 8px; }
+    .secondary:hover { background: #334155; }
+    .message { margin-top: 12px; font-size: 0.9rem; min-height: 20px; padding: 12px; border-radius: 8px; }
+    .error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+    .success { background: #166534; color: #86efac; border: 1px solid #15803d; }
+    .info { background: #1e3a8a; color: #93c5fd; border: 1px solid #3b82f6; }
+    .section { margin-top: 24px; padding-top: 24px; border-top: 1px solid #334155; }
+    .section h2 { font-size: 1.1rem; margin-top: 0; color: #cbd5e1; }
+    .muted { font-size: 0.8rem; color: #64748b; margin-top: 4px; }
+    .row { display: flex; gap: 1rem; }
+    @media (max-width: 600px) { .row { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚙️ Perfil</h1>
+      <a href="/">← Voltar</a>
+    </div>
+
+    <div id="content" style="display:none;">
+      <!-- Informações do Usuário -->
+      <div>
+        <label>Nome</label>
+        <input type="text" id="name" readonly />
+        <p class="muted">Seu nome no sistema</p>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Email Pessoal</label>
+          <input type="email" id="email" readonly />
+          <p class="muted">Email de login (não editável aqui)</p>
+        </div>
+        <div>
+          <label>Data de Cadastro</label>
+          <input type="text" id="createdAt" readonly />
+          <p class="muted">Quando a conta foi criada</p>
+        </div>
+      </div>
+
+      <!-- Credenciais do Jira -->
+      <div class="section">
+        <h2>🔑 Credenciais do Jira</h2>
+        
+        <div class="row">
+          <div>
+            <label for="jiraEmail">Email Jira</label>
+            <input type="email" id="jiraEmail" placeholder="seu.email@nimbi.com.br" />
+            <p class="muted">Email usado para autenticar na API do Jira</p>
+          </div>
+          <div>
+            <label for="jiraDomain">Domínio Jira</label>
+            <input type="text" id="jiraDomain" placeholder="nimbi-portal.atlassian.net" />
+            <p class="muted">Ex: nimbi-portal.atlassian.net</p>
+          </div>
+        </div>
+
+        <label for="jiraToken">Novo Token Jira (deixe em branco para manter o atual)</label>
+        <input type="password" id="jiraToken" placeholder="Novo token da API do Jira" />
+        <p class="muted">Cole um novo token para substituir o anterior. Se deixar vazio, o token atual será mantido.</p>
+
+        <label for="currentPassword">Senha Atual (obrigatória para fazer alterações)</label>
+        <input type="password" id="currentPassword" placeholder="Sua senha" />
+        <p class="muted">Por segurança, pedimos sua senha para confirmar qualquer mudança de credenciais.</p>
+
+        <button id="btnSalvar" onclick="salvarCredenciais()">✓ Salvar Alterações</button>
+      </div>
+
+      <!-- Segurança -->
+      <div class="section">
+        <h2>🔐 Segurança</h2>
+        <a href="/change-password.html" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Mudar Senha</a>
+        <p class="muted" style="margin-top: 16px;">Clique para mudar sua senha de login pessoal.</p>
+      </div>
+
+      <div id="message" class="message" style="display:none;"></div>
+    </div>
+
+    <div id="loading" style="text-align: center; color: #94a3b8;">
+      Carregando dados do perfil...
+    </div>
+  </div>
+
+  <script>
+    const contentDiv = document.getElementById('content');
+    const loadingDiv = document.getElementById('loading');
+    const messageDiv = document.getElementById('message');
+
+    function showMessage(text, type = 'info') {
+      messageDiv.textContent = text;
+      messageDiv.className = `message ${type}`;
+      messageDiv.style.display = 'block';
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function carregarPerfil() {
+      try {
+        const resp = await fetch('/api/auth/session');
+        const result = await resp.json();
+        
+        if (!result.authenticated) {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        const user = result.user;
+        document.getElementById('name').value = user.name || '-';
+        document.getElementById('email').value = user.email || '-';
+        document.getElementById('createdAt').value = formatDate(user.createdAt);
+        document.getElementById('jiraEmail').value = user.jiraEmail || '';
+        document.getElementById('jiraDomain').value = user.jiraDomain || 'nimbi-portal.atlassian.net';
+
+        loadingDiv.style.display = 'none';
+        contentDiv.style.display = 'block';
+      } catch (error) {
+        showMessage('Erro ao carregar perfil. Tente novamente.', 'error');
+        console.error(error);
+      }
+    }
+
+    async function salvarCredenciais() {
+      const jiraEmail = document.getElementById('jiraEmail').value.trim();
+      const jiraDomain = document.getElementById('jiraDomain').value.trim();
+      const jiraToken = document.getElementById('jiraToken').value.trim();
+      const currentPassword = document.getElementById('currentPassword').value;
+
+      if (!jiraEmail) {
+        showMessage('Email Jira é obrigatório.', 'error');
+        return;
+      }
+
+      if (!currentPassword) {
+        showMessage('Senha atual é obrigatória para fazer alterações.', 'error');
+        return;
+      }
+
+      document.getElementById('btnSalvar').disabled = true;
+
+      try {
+        const resp = await fetch('/api/auth/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jiraEmail,
+            jiraDomain: jiraDomain || 'nimbi-portal.atlassian.net',
+            jiraToken: jiraToken || undefined,
+            currentPassword,
+          }),
+        });
+
+        const result = await resp.json();
+
+        if (!resp.ok) {
+          showMessage(result.error || 'Erro ao atualizar perfil.', 'error');
+          return;
+        }
+
+        showMessage('✓ Perfil atualizado com sucesso!', 'success');
+        document.getElementById('currentPassword').value = '';
+        document.getElementById('jiraToken').value = '';
+
+        setTimeout(() => {
+          messageDiv.style.display = 'none';
+        }, 4000);
+      } catch (error) {
+        showMessage('Erro ao atualizar perfil. Tente novamente.', 'error');
+        console.error(error);
+      } finally {
+        document.getElementById('btnSalvar').disabled = false;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', carregarPerfil);
+  </script>
+</body>
+</html>

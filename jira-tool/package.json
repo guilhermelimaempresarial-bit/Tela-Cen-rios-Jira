@@ -1,12 +1,15 @@
 {
   "name": "jira-cenarios-tool",
-  "version": "1.0.0",
-  "description": "Ferramenta web para criar, mover e alterar status de subtarefas de cenarios de teste no Jira, com conversao flexivel de texto em cenarios e transicoes automaticas de status",
+  "version": "2.0.0",
+  "description": "Ferramenta web para criar, mover e alterar status de subtarefas de cenarios de teste no Jira, com autenticação segura e armazenamento do token no backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.0"
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.0",
+    "express-session": "^1.18.0"
   }
 }

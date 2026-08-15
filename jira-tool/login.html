@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jira Tool V2 - Login</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: min(460px, 90vw);
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    h1 { margin-top: 0; font-size: 1.8rem; }
+    label { display: block; margin-top: 12px; font-size: 0.9rem; color: #cbd5e1; }
+    input {
+      width: 100%;
+      margin-top: 6px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .secondary {
+      background: #1e293b;
+      border: 1px solid #475569;
+      margin-top: 8px;
+    }
+    .muted { color: #94a3b8; font-size: 0.82rem; }
+    .message { margin-top: 12px; font-size: 0.9rem; min-height: 20px; }
+    .error { color: #fca5a5; }
+    .success { color: #86efac; }
+    .toggle { margin-top: 16px; text-align: center; font-size: 0.9rem; }
+    .toggle button { width: auto; background: transparent; color: #93c5fd; border: none; margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 id="formTitle">Login</h1>
+    <div id="registerFields" style="display:none;">
+      <label>Nome</label>
+      <input id="name" type="text" placeholder="Seu nome" />
+    </div>
+    <label>Email</label>
+    <input id="email" type="email" placeholder="qa@empresa.com" />
+    <label>Senha</label>
+    <input id="password" type="password" placeholder="Sua senha" />
+    <div id="registerExtra" style="display:none;">
+      <label>Email Jira</label>
+      <input id="jiraEmail" type="email" placeholder="qa@empresa.com" />
+      <label>Token Jira</label>
+      <input id="jiraToken" type="password" placeholder="Token da API do Jira" />
+      <label>Domínio Jira</label>
+      <input id="jiraDomain" type="text" value="nimbi-portal.atlassian.net" placeholder="nimbi-portal.atlassian.net" />
+    </div>
+    <button id="submitBtn" onclick="submitForm()">Entrar</button>
+    <button class="secondary" onclick="toggleMode()" id="toggleBtn">Quero me cadastrar</button>
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    let isRegister = false;
+
+    function setMessage(text, type='') {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.className = 'message ' + (type ? type : '');
+    }
+
+    function toggleMode() {
+      isRegister = !isRegister;
+      document.getElementById('registerFields').style.display = isRegister ? 'block' : 'none';
+      document.getElementById('registerExtra').style.display = isRegister ? 'block' : 'none';
+      document.getElementById('formTitle').textContent = isRegister ? 'Cadastro' : 'Login';
+      document.getElementById('submitBtn').textContent = isRegister ? 'Cadastrar' : 'Entrar';
+      document.getElementById('toggleBtn').textContent = isRegister ? 'Já tenho conta' : 'Quero me cadastrar';
+      setMessage('');
+    }
+
+    async function submitForm() {
+      const payload = {
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value,
+      };
+
+      if (isRegister) {
+        payload.name = document.getElementById('name').value.trim();
+        payload.jiraEmail = document.getElementById('jiraEmail').value.trim();
+        payload.jiraToken = document.getElementById('jiraToken').value.trim();
+        payload.jiraDomain = document.getElementById('jiraDomain').value.trim();
+      }
+
+      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        setMessage(result.error || 'Falha ao processar autenticação.', 'error');
+        return;
+      }
+
+      setMessage(isRegister ? 'Cadastro realizado com sucesso.' : 'Login realizado com sucesso.', 'success');
+      setTimeout(() => window.location.href = '/', 600);
+    }
+  </script>
+</body>
+</html>

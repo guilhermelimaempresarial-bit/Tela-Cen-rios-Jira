@@ -1,0 +1,14 @@
+[
+  {
+    "id": "9f19af8f-faad-44e4-862b-fcc7188bb7ac",
+    "name": "Guilherme Mendes do Nascimento Lima",
+    "email": "guilherme.lima@nimbi.com.br",
+    "passwordHash": "$2a$10$SBua9iJmuxRBlZYNt3ltGulreMbL0VFIDmNKM5FrHKUp3/vOu0nAm",
+    "jiraEmail": "guilherme.lima@nimbi.com.br",
+    "jiraDomain": "nimbi-portal.atlassian.net",
+    "jiraTokenEncrypted": "PIbcpR/Uym+bHH7pmnOL3Jua1k8q9iLeCsM+WDL33r91hjH7y83C8h6GCB65lgBlklGHctTJSVPOOd70xxkYY3BNAmsWa4T2DUsinX8C1I3r957CN53kE9y2sflSyh7meM88zFbVd9ShUe1wBF06PIt7bAcGsJtklbwWLJtWXQODSuyVs4+c1HtI+svjVtGfjpvfnIFHsTzPtZ0MpBQ916aAWf2+3pXriPF99SjC1jeguV6+aQxTmG04InbwIV+yn5Xi9UiwzSgshEwqsnR2uP6dMp89EsRSWnWSoqZVd64=",
+    "role": "qa",
+    "createdAt": "2026-08-15T20:29:14.413Z",
+    "updatedAt": "2026-08-15T20:29:14.413Z"
+  }
+]
