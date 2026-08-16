@@ -13,6 +13,16 @@ yarn-error.log*
 .env.*
 !.env.example
 
+# Dados sensíveis e arquivos gerados em runtime
+jira-tool/data/*.json
+jira-tool/data/*.db
+jira-tool/data/*.sqlite
+jira-tool/data/*.sqlite3
+*.pem
+*.key
+*.crt
+*.secret
+
 # Configuração do editor
 .vscode/
 .idea/

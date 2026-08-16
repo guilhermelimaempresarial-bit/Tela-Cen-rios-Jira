@@ -206,6 +206,7 @@
     <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
       <a class="theme-toggle" href="ajuda.html" target="_blank" title="Abrir o guia de uso" style="text-decoration:none;">❓ Como usar</a>
       <a class="theme-toggle" href="/profile.html" title="Abrir perfil do usuário" style="text-decoration:none;">⚙️ Perfil</a>
+      <a id="adminLink" class="theme-toggle" href="/admin.html" title="Abrir painel administrativo" style="text-decoration:none; display:none;">🛡️ Admin</a>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙 Tema escuro</button>
     </div>
   </div>
@@ -536,8 +537,18 @@ async function checkSession() {
       return;
     }
 
+    if (result.user && result.user.requirePasswordChange) {
+      window.location.href = '/change-password.html?forced=1';
+      return;
+    }
+
     if (info) {
       info.textContent = `${result.user.name} · ${result.user.jiraEmail}`;
+    }
+
+    const adminLink = document.getElementById('adminLink');
+    if (adminLink) {
+      adminLink.style.display = result.user && result.user.role === 'admin' ? 'inline-flex' : 'none';
     }
   } catch (error) {
     window.location.href = '/login.html';

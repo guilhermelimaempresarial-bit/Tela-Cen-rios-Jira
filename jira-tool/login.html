@@ -140,6 +140,16 @@
       outline: none;
       box-shadow: 0 0 0 2px rgba(76,154,255,0.2);
     }
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+      -webkit-text-fill-color: var(--text);
+      -webkit-box-shadow: 0 0 0 1000px var(--bg) inset;
+      box-shadow: 0 0 0 1000px var(--bg) inset;
+      caret-color: var(--text);
+      transition: background-color 9999s ease-in-out 0s;
+    }
     button.primary {
       width: 100%;
       margin-top: 1.5rem;
@@ -196,6 +206,61 @@
       color: #86efac;
       border: 1px solid #15803d;
     }
+    .mfa-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .mfa-modal.hidden { display: none; }
+    .mfa-modal-card {
+      width: min(420px, calc(100vw - 32px));
+      background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.25);
+      padding: 24px;
+    }
+    .mfa-modal-card h3 {
+      margin: 0 0 8px;
+      color: var(--text-strong);
+      font-size: 1.2rem;
+    }
+    .mfa-modal-card p {
+      margin-bottom: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .mfa-modal-card label {
+      display: block;
+      margin: 0 0 6px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .mfa-modal-card input {
+      width: 100%;
+      padding: 0.8rem 0.9rem;
+      border: 1px solid var(--border-input);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+    .mfa-modal-card .primary,
+    .mfa-modal-card .secondary {
+      width: auto;
+      min-width: 120px;
+      margin-top: 0;
+    }
+    .mfa-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 18px;
+    }
     @media (max-width: 768px) {
       body { padding: 0 1rem; margin: 0; }
       .header-top { flex-direction: column; }
@@ -219,7 +284,6 @@
         <p class="subtitle">Automação segura de cenários de teste no Jira com autenticação por usuário</p>
       </div>
       <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-        <a class="theme-toggle" href="login-help.html" target="_blank" title="Abrir guia de uso" style="text-decoration:none;">❓ Como usar</a>
         <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙 Tema escuro</button>
       </div>
     </div>
@@ -230,40 +294,111 @@
       <h1 id="formTitle" style="font-size: 1.4rem; margin-bottom: 0.5rem;">Login</h1>
       <p class="muted" id="formSubtitle">Acesse sua conta para usar a ferramenta</p>
       
-      <div id="registerFields" style="display:none;">
-        <label for="name">Nome</label>
-        <input id="name" type="text" placeholder="Seu nome completo" />
+
+
+      <div id="loginEmailGroup">
+        <label for="username">Username</label>
+        <input id="username" type="text" placeholder="Seu username" />
       </div>
-      
-      <label for="email">Email</label>
-      <input id="email" type="email" placeholder="seu.email@empresa.com" />
       
       <label for="password">Senha</label>
       <input id="password" type="password" placeholder="Sua senha" />
+
+      <div id="mfaSection" style="display:none;">
+        <label for="mfaLoginCode">Código MFA</label>
+        <input id="mfaLoginCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Digite o código do app autenticador" />
+        <p class="muted">Seu app autenticador (Google Authenticator / Microsoft Authenticator) deve gerar o código de 6 dígitos.</p>
+      </div>
       
-      <div id="registerExtra" style="display:none;">
-        <label for="jiraEmail">Email Jira</label>
-        <input id="jiraEmail" type="email" placeholder="seu.email@empresa.com" />
-        <p class="muted">Email que você usa na API do Jira</p>
-        
-        <label for="jiraToken">Token Jira</label>
-        <input id="jiraToken" type="password" placeholder="Seu token da API do Jira" />
-        <p class="muted">Gere em: https://id.atlassian.com/manage-profile/security/api-tokens</p>
-        
-        <label for="jiraDomain">Domínio Jira</label>
-        <input id="jiraDomain" type="text" value="nimbi-portal.atlassian.net" placeholder="ex: nimbi-portal.atlassian.net" />
-        <p class="muted">Deixe em branco para usar o padrão</p>
+
+
+      <div id="mfaSetupBlock" style="display:none; margin-top: 1rem;">
+        <div style="text-align:center; margin-bottom: 12px;">
+          <img id="mfaQrImage" alt="QR Code do MFA" style="max-width: 220px; width: 100%; border-radius: 8px; background: white; padding: 8px; display:none;" />
+        </div>
+        <label for="mfaSetupCode">Código MFA</label>
+        <input id="mfaSetupCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Digite o código do app autenticador" />
+        <p class="muted">Esse código precisa ser gerado pelo Google Authenticator, Authy ou Microsoft Authenticator.</p>
       </div>
       
       <button class="primary" id="submitBtn" onclick="submitForm()">Entrar</button>
-      <button class="secondary" id="toggleBtn" onclick="toggleMode()">Quero me cadastrar</button>
       
       <div id="message" class="message"></div>
     </div>
   </div>
 
+  <div id="mfaPasswordModal" class="mfa-modal hidden">
+    <div class="mfa-modal-card">
+      <h3>Confirmar segurança</h3>
+      <p>Informe sua senha atual para configurar ou trocar o MFA.</p>
+      <label for="mfaPasswordInput">Senha atual</label>
+      <input id="mfaPasswordInput" type="password" placeholder="Digite sua senha atual" />
+      <div class="mfa-modal-actions">
+        <button type="button" class="secondary" onclick="fecharPopupMfa()">Cancelar</button>
+        <button type="button" class="primary" onclick="validarSenhaMfa()">Continuar</button>
+      </div>
+      <div id="mfaPasswordError" class="message error" style="display:none; margin-top:12px;"></div>
+    </div>
+  </div>
+
   <script>
-    let isRegister = false;
+    let pendingMfaSetup = false;
+    let pendingMfaQr = '';
+
+    function abrirPopupMfa() {
+      document.getElementById('mfaPasswordInput').value = '';
+      document.getElementById('mfaPasswordError').style.display = 'none';
+      document.getElementById('mfaPasswordError').textContent = '';
+      document.getElementById('mfaPasswordModal').classList.remove('hidden');
+      document.getElementById('mfaPasswordInput').focus();
+    }
+
+    function fecharPopupMfa() {
+      document.getElementById('mfaPasswordModal').classList.add('hidden');
+      document.getElementById('mfaPasswordInput').value = '';
+      document.getElementById('mfaPasswordError').style.display = 'none';
+      document.getElementById('mfaPasswordError').textContent = '';
+    }
+
+    async function validarSenhaMfa() {
+      const password = document.getElementById('mfaPasswordInput').value.trim();
+      const errorEl = document.getElementById('mfaPasswordError');
+
+      if (!password) {
+        errorEl.textContent = 'Informe sua senha atual para continuar.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/validate-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            password,
+          })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          errorEl.textContent = result.error || 'Senha incorreta.';
+          errorEl.style.display = 'block';
+          return;
+        }
+
+        fecharPopupMfa();
+        setMessage('Senha confirmada. Escaneie o QR code e valide o novo MFA.', 'success');
+        if (pendingMfaQr) {
+          handleMfaRequired(pendingMfaQr);
+        }
+      } catch (error) {
+        errorEl.textContent = 'Erro ao validar senha.';
+        errorEl.style.display = 'block';
+        console.error(error);
+      }
+    }
 
     function updateThemeButton() {
       const atual = document.documentElement.getAttribute('data-theme') || 'light';
@@ -286,41 +421,47 @@
       el.style.display = text ? 'block' : 'none';
     }
 
-    function toggleMode() {
-      isRegister = !isRegister;
-      document.getElementById('registerFields').style.display = isRegister ? 'block' : 'none';
-      document.getElementById('registerExtra').style.display = isRegister ? 'block' : 'none';
-      document.getElementById('formTitle').textContent = isRegister ? 'Cadastro' : 'Login';
-      document.getElementById('formSubtitle').textContent = isRegister ? 'Crie sua conta para começar a usar' : 'Acesse sua conta para usar a ferramenta';
-      document.getElementById('submitBtn').textContent = isRegister ? 'Cadastrar' : 'Entrar';
-      document.getElementById('toggleBtn').textContent = isRegister ? 'Já tenho conta' : 'Quero me cadastrar';
-      setMessage('');
+
+
+    function handleMfaRequired(qrCode) {
+      const loginBlock = document.getElementById('mfaSection');
+      const setupBlock = document.getElementById('mfaSetupBlock');
+
+      if (pendingMfaSetup) {
+        setupBlock.style.display = 'block';
+        loginBlock.style.display = 'none';
+        const img = document.getElementById('mfaQrImage');
+        if (qrCode) {
+          img.src = qrCode;
+          img.style.display = 'inline-block';
+        }
+        return;
+      }
+
+      loginBlock.style.display = 'block';
+      setupBlock.style.display = 'none';
+    }
+
+    function triggerMfaSetupWithPassword() {
+      abrirPopupMfa();
     }
 
     async function submitForm() {
       const payload = {
-        email: document.getElementById('email').value.trim(),
+        username: document.getElementById('username').value.trim(),
         password: document.getElementById('password').value,
       };
 
-      if (isRegister) {
-        payload.name = document.getElementById('name').value.trim();
-        payload.jiraEmail = document.getElementById('jiraEmail').value.trim();
-        payload.jiraToken = document.getElementById('jiraToken').value.trim();
-        payload.jiraDomain = document.getElementById('jiraDomain').value.trim();
-      }
+      const fieldId = pendingMfaSetup ? 'mfaSetupCode' : 'mfaLoginCode';
+      const mfaCode = document.getElementById(fieldId).value.trim();
+      if (mfaCode) payload.mfaCode = mfaCode;
 
-      if (!payload.email || !payload.password) {
-        setMessage('Email e senha são obrigatórios.', 'error');
+      if (!payload.username || !payload.password) {
+        setMessage('Username e senha são obrigatórios.', 'error');
         return;
       }
 
-      if (isRegister && (!payload.name || !payload.jiraEmail || !payload.jiraToken)) {
-        setMessage('Todos os campos de cadastro são obrigatórios.', 'error');
-        return;
-      }
-
-      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+      const endpoint = '/api/auth/login';
       
       try {
         const response = await fetch(endpoint, {
@@ -331,17 +472,52 @@
 
         const result = await response.json();
         if (!response.ok) {
+          if (result.requiresMfaSetup) {
+            pendingMfaSetup = true;
+            pendingMfaQr = result.qrCode || '';
+            abrirPopupMfa();
+            setMessage(result.error || 'Configure o MFA para continuar.', 'error');
+            return;
+          }
+          if (result.requiresMfa) {
+            document.getElementById('mfaSection').style.display = 'block';
+            document.getElementById('mfaSetupBlock').style.display = 'none';
+            setMessage('Este usuário exige MFA. Digite o código do autenticador.', 'info');
+            return;
+          }
           setMessage(result.error || 'Falha ao processar autenticação.', 'error');
           return;
         }
 
-        setMessage(isRegister ? 'Cadastro realizado! Redirecionando...' : 'Login bem-sucedido! Redirecionando...', 'success');
-        setTimeout(() => window.location.href = '/', 800);
+        if (result.requiresMfaSetup) {
+          pendingMfaSetup = true;
+          pendingMfaQr = result.qrCode || '';
+          handleMfaRequired(pendingMfaQr);
+          setMessage(result.message || 'Configure o MFA para continuar.', 'error');
+          return;
+        }
+
+        if (result.requiresMfa) {
+          document.getElementById('mfaSection').style.display = 'block';
+          document.getElementById('mfaSetupBlock').style.display = 'none';
+          setMessage(result.message || 'Digite o código do autenticador.', 'error');
+          return;
+        }
+
+        if (result.requirePasswordChange) {
+          setMessage('Primeiro acesso! Redirecionando para alterar a senha temporária...', 'success');
+          setTimeout(() => window.location.href = '/change-password.html?forced=1', 800);
+        } else {
+          setMessage('Login bem-sucedido! Redirecionando...', 'success');
+          setTimeout(() => window.location.href = '/', 800);
+        }
       } catch (error) {
         setMessage('Erro de conexão. Tente novamente.', 'error');
         console.error(error);
       }
     }
+
+
 
     document.getElementById('password').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') submitForm();

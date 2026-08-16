@@ -1,63 +1,260 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Jira Tool V2 - Perfil</title>
   <style>
-    * { box-sizing: border-box; }
+    :root {
+      --bg: #fafbfc;
+      --surface: #ffffff;
+      --surface-2: #f4f5f7;
+      --surface-3: #ebecf0;
+      --text: #172b4d;
+      --text-strong: #091e42;
+      --text-muted: #5e6c84;
+      --text-soft: #6b778c;
+      --text-label: #344563;
+      --border: #dfe1e6;
+      --border-input: #c1c7d0;
+      --code-bg: #dfe1e6;
+      --shadow: rgba(9,30,66,0.08);
+      --accent: #0052cc;
+    }
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-2: #21262d;
+      --surface-3: #2d333b;
+      --text: #e6edf3;
+      --text-strong: #ffffff;
+      --text-muted: #9198a1;
+      --text-soft: #8b949e;
+      --text-label: #c9d1d9;
+      --border: #30363d;
+      --border-input: #3d444d;
+      --code-bg: #2d333b;
+      --shadow: rgba(0,0,0,0.4);
+      --accent: #4c9aff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    .container {
+      width: min(650px, 90vw);
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px var(--shadow);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 1.6rem; color: var(--text-strong); }
+    .header-right {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .back-link {
+      padding: 0.5rem 1rem;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      border: 1px solid var(--border-input);
+      border-radius: 20px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.82rem;
+      display: inline-block;
+      white-space: nowrap;
+      transition: background-color 0.2s;
+    }
+    .back-link:hover { background: var(--surface-3); }
+    label { display: block; margin-top: 16px; font-size: 0.85rem; color: var(--text-label); font-weight: 600; }
+    input, select {
+      width: 100%;
+      margin-top: 6px;
+      padding: 0.6rem;
+      border-radius: 4px;
+      border: 1px solid var(--border-input);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.875rem;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+    input:focus, select:focus {
+      border-color: #4c9aff;
+      background: var(--surface);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(76,154,255,0.2);
+    }
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+      -webkit-text-fill-color: var(--text);
+      -webkit-box-shadow: 0 0 0 1000px var(--bg) inset;
+      box-shadow: 0 0 0 1000px var(--bg) inset;
+      caret-color: var(--text);
+      transition: background-color 9999s ease-in-out 0s;
+    }
+    input[readonly] { background: var(--surface-2); cursor: not-allowed; color: var(--text-muted); }
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 0.75rem 1.8rem;
+      border: none;
+      border-radius: 4px;
+      background: #0052cc;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover { background: #0065ff; }
+    button:disabled { background: #a5adba; cursor: not-allowed; }
+    .secondary {
+      background: var(--surface-2);
+      border: 1px solid var(--border-input);
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+    .secondary:hover { background: var(--surface-3); }
+    .message {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      min-height: 20px;
+      padding: 12px;
+      border-radius: 6px;
+    }
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+    .success {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+    .info {
+      background: #dbeafe;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+    [data-theme="dark"] .error {
+      background: #7f1d1d;
+      color: #fca5a5;
+      border: 1px solid #991b1b;
+    }
+    [data-theme="dark"] .success {
+      background: #166534;
+      color: #86efac;
+      border: 1px solid #15803d;
+    }
+    [data-theme="dark"] .info {
+      background: #1e3a8a;
+      color: #93c5fd;
+      border: 1px solid #3b82f6;
+    }
+    .section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+    .section h2 { font-size: 1.1rem; margin-top: 0; color: var(--text-strong); }
+    .muted { font-size: 0.8rem; color: var(--text-soft); margin-top: 4px; }
+    .row { display: flex; gap: 1rem; }
+    .row > div { flex: 1; }
+    .profile-link {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 12px 24px;
+      background: #0052cc;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .profile-link:hover { background: #0065ff; }
+    .mfa-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
+      z-index: 1000;
     }
-    .container {
-      width: min(600px, 90vw);
-      background: #111827;
-      border: 1px solid #334155;
+    .mfa-modal.hidden { display: none; }
+    .mfa-modal-card {
+      width: min(420px, calc(100vw - 32px));
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
       padding: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
     }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-    h1 { margin: 0; font-size: 1.8rem; }
-    .header a { color: #93c5fd; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
-    .header a:hover { color: #60a5fa; }
-    label { display: block; margin-top: 16px; font-size: 0.9rem; color: #cbd5e1; }
-    input, select { width: 100%; margin-top: 6px; padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; }
-    input:focus, select:focus { border-color: #2563eb; outline: none; }
-    input[readonly] { background: #1e293b; cursor: not-allowed; color: #94a3b8; }
-    button { width: 100%; margin-top: 16px; padding: 12px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
-    button:disabled { background: #64748b; cursor: not-allowed; }
-    .secondary { background: #1e293b; border: 1px solid #475569; color: #cbd5e1; margin-top: 8px; }
-    .secondary:hover { background: #334155; }
-    .message { margin-top: 12px; font-size: 0.9rem; min-height: 20px; padding: 12px; border-radius: 8px; }
-    .error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
-    .success { background: #166534; color: #86efac; border: 1px solid #15803d; }
-    .info { background: #1e3a8a; color: #93c5fd; border: 1px solid #3b82f6; }
-    .section { margin-top: 24px; padding-top: 24px; border-top: 1px solid #334155; }
-    .section h2 { font-size: 1.1rem; margin-top: 0; color: #cbd5e1; }
-    .muted { font-size: 0.8rem; color: #64748b; margin-top: 4px; }
-    .row { display: flex; gap: 1rem; }
-    @media (max-width: 600px) { .row { flex-direction: column; } }
+    .mfa-modal-card h3 {
+      margin: 0 0 8px;
+      color: var(--text-strong);
+    }
+    .mfa-modal-card p {
+      margin-bottom: 12px;
+      color: var(--text-muted);
+    }
+    .mfa-modal-card label {
+      display: block;
+      margin: 0 0 6px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .mfa-modal-card input {
+      width: 100%;
+      padding: 0.7rem 0.8rem;
+      border: 1px solid var(--border-input);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .mfa-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    @media (max-width: 600px) { .row { flex-direction: column; } body { padding: 1rem; } }
   </style>
+  <script>
+    (function() {
+      try {
+        const saved = localStorage.getItem('jiraTool.theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1>⚙️ Perfil</h1>
-      <a href="/">← Voltar</a>
+      <div class="header-right">
+        <a class="back-link" href="/">← Voltar</a>
+      </div>
     </div>
 
     <div id="content" style="display:none;">
-      <!-- Informações do Usuário -->
       <div>
         <label>Nome</label>
         <input type="text" id="name" readonly />
@@ -66,9 +263,9 @@
 
       <div class="row">
         <div>
-          <label>Email Pessoal</label>
-          <input type="email" id="email" readonly />
-          <p class="muted">Email de login (não editável aqui)</p>
+          <label>Username</label>
+          <input type="text" id="username" readonly />
+          <p class="muted">Nome de usuário (não editável aqui)</p>
         </div>
         <div>
           <label>Data de Cadastro</label>
@@ -77,22 +274,10 @@
         </div>
       </div>
 
-      <!-- Credenciais do Jira -->
       <div class="section">
         <h2>🔑 Credenciais do Jira</h2>
         
-        <div class="row">
-          <div>
-            <label for="jiraEmail">Email Jira</label>
-            <input type="email" id="jiraEmail" placeholder="seu.email@nimbi.com.br" />
-            <p class="muted">Email usado para autenticar na API do Jira</p>
-          </div>
-          <div>
-            <label for="jiraDomain">Domínio Jira</label>
-            <input type="text" id="jiraDomain" placeholder="nimbi-portal.atlassian.net" />
-            <p class="muted">Ex: nimbi-portal.atlassian.net</p>
-          </div>
-        </div>
+
 
         <label for="jiraToken">Novo Token Jira (deixe em branco para manter o atual)</label>
         <input type="password" id="jiraToken" placeholder="Novo token da API do Jira" />
@@ -105,17 +290,17 @@
         <button id="btnSalvar" onclick="salvarCredenciais()">✓ Salvar Alterações</button>
       </div>
 
-      <!-- Segurança -->
       <div class="section">
         <h2>🔐 Segurança</h2>
-        <a href="/change-password.html" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Mudar Senha</a>
+        <a href="/change-password.html" class="profile-link">Mudar Senha</a>
         <p class="muted" style="margin-top: 16px;">Clique para mudar sua senha de login pessoal.</p>
+
       </div>
 
       <div id="message" class="message" style="display:none;"></div>
     </div>
 
-    <div id="loading" style="text-align: center; color: #94a3b8;">
+    <div id="loading" style="text-align: center; color: var(--text-muted);">
       Carregando dados do perfil...
     </div>
   </div>
@@ -124,6 +309,7 @@
     const contentDiv = document.getElementById('content');
     const loadingDiv = document.getElementById('loading');
     const messageDiv = document.getElementById('message');
+
 
     function showMessage(text, type = 'info') {
       messageDiv.textContent = text;
@@ -148,11 +334,16 @@
         }
 
         const user = result.user;
+
+        if (user.requirePasswordChange) {
+          window.location.href = '/change-password.html?forced=1';
+          return;
+        }
+
         document.getElementById('name').value = user.name || '-';
-        document.getElementById('email').value = user.email || '-';
+        document.getElementById('username').value = user.username || '-';
         document.getElementById('createdAt').value = formatDate(user.createdAt);
-        document.getElementById('jiraEmail').value = user.jiraEmail || '';
-        document.getElementById('jiraDomain').value = user.jiraDomain || 'nimbi-portal.atlassian.net';
+
 
         loadingDiv.style.display = 'none';
         contentDiv.style.display = 'block';
@@ -163,15 +354,10 @@
     }
 
     async function salvarCredenciais() {
-      const jiraEmail = document.getElementById('jiraEmail').value.trim();
-      const jiraDomain = document.getElementById('jiraDomain').value.trim();
       const jiraToken = document.getElementById('jiraToken').value.trim();
       const currentPassword = document.getElementById('currentPassword').value;
 
-      if (!jiraEmail) {
-        showMessage('Email Jira é obrigatório.', 'error');
-        return;
-      }
+
 
       if (!currentPassword) {
         showMessage('Senha atual é obrigatória para fazer alterações.', 'error');
@@ -185,8 +371,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            jiraEmail,
-            jiraDomain: jiraDomain || 'nimbi-portal.atlassian.net',
+
             jiraToken: jiraToken || undefined,
             currentPassword,
           }),
@@ -214,7 +399,9 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', carregarPerfil);
+    document.addEventListener('DOMContentLoaded', () => {
+      carregarPerfil();
+    });
   </script>
 </body>
 </html>
