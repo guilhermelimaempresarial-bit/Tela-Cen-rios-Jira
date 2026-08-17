@@ -343,16 +343,57 @@ app.post('/api/auth/update-profile', requireAuth, async (req, res) => {
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
-  if (newPassword.length < 6) return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres.' });
-  const user = await User.findOne({ id: req.session.userId });
-  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) return res.status(401).json({ error: 'Senha atual incorreta.' });
+  
+  // 1. Verificações de Regex (Tamanho, Maiúsculas, Minúsculas, Números e Especiais)
+  if (!newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' });
+  }
+  if (!/[A-Z]/.test(newPassword)) {
+    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 letra MAIÚSCULA.' });
+  }
+  if (!/[a-z]/.test(newPassword)) {
+    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 letra minúscula.' });
+  }
+  if (!/[0-9]/.test(newPassword)) {
+    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 número.' });
+  }
+  if (!/[^A-Za-z0-9]/.test(newPassword)) {
+    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 caractere especial (ex: @, #, !, $).' });
+  }
 
+  // 2. Verificação Avançada de Números Sequenciais (ex: 123, 345, 987)
+  const hasSequentialNumbers = (str) => {
+    for (let i = 0; i < str.length - 2; i++) {
+      const c1 = str.charCodeAt(i);
+      const c2 = str.charCodeAt(i + 1);
+      const c3 = str.charCodeAt(i + 2);
+      
+      // Só verifica se os três caracteres atuais forem números (código ASCII entre 48 e 57)
+      if (c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57 && c3 >= 48 && c3 <= 57) {
+         if (c2 === c1 + 1 && c3 === c2 + 1) return true; // Crescente (ex: 123)
+         if (c2 === c1 - 1 && c3 === c2 - 1) return true; // Decrescente (ex: 321)
+      }
+    }
+    return false;
+  };
+
+  if (hasSequentialNumbers(newPassword)) {
+    return res.status(400).json({ error: 'A senha não pode conter 3 números sequenciais (ex: 123, 789, 321).' });
+  }
+
+  // 3. Validação do Banco de Dados
+  const user = await User.findOne({ id: req.session.userId });
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    return res.status(401).json({ error: 'A senha atual está incorreta.' });
+  }
+
+  // 4. Salvar nova senha
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.requirePasswordChange = false;
   user.updatedAt = new Date();
   await user.save();
   
-  req.session.loginTime = Date.now(); // Atualiza tempo para manter logado após mudar a senha
+  req.session.loginTime = Date.now(); // Mantém o usuário logado após mudar a senha
   res.json({ success: true, message: 'Senha alterada com sucesso.' });
 });
 

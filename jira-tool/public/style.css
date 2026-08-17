@@ -189,3 +189,31 @@ button.small { padding: 0.4rem 0.9rem; font-size: 0.8rem; margin-top: 0; }
   display: block;
   margin-top: 4px;
 }
+
+/* ==============================================================
+   🛡️ TELA DE ADMINISTRAÇÃO (Centralização de Colunas)
+   ============================================================== */
+
+/* Se a lista foi feita com a tag <table> */
+table th, 
+table td {
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+/* Se a lista foi feita com divs e flexbox/grid (ex: painel de usuários) */
+.admin-list-row,
+.admin-row,
+[id*="userList"] > div,
+[id*="usersTable"] > div {
+  text-align: center !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Caso tenha alguma coluna que você queira manter alinhada à esquerda (ex: o Nome do usuário), 
+   você pode adicionar uma classe 'text-left' nela futuramente no HTML, e esta regra protege: */
+.text-left {
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
