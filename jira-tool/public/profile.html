@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jira Tool V2 - Perfil</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* CSS específico do Profile */
+    body { min-height: 100vh; display: flex; flex-direction: column; }
+    .container { width: min(650px, 90vw); margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 24px; flex-wrap: wrap; }
+    .header-right { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .back-link { padding: 0.5rem 1rem; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border-input); border-radius: 20px; text-decoration: none; font-weight: 600; font-size: 0.82rem; transition: background-color 0.2s; }
+    .back-link:hover { background: var(--surface-3); }
+    input[readonly] { background: var(--surface-2); cursor: not-allowed; color: var(--text-muted); }
+    .message { margin-top: 12px; font-size: 0.9rem; min-height: 20px; padding: 12px; border-radius: 6px; }
+    .error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    [data-theme="dark"] .error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+    [data-theme="dark"] .success { background: #166534; color: #86efac; border: 1px solid #15803d; }
+    .section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+    .section h2 { font-size: 1.1rem; margin-top: 0; color: var(--text-strong); }
+    
+    /* Organização dos botões de ação */
+    .action-group { display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1rem; }
+    .action-item { display: flex; flex-direction: column; align-items: flex-start; }
+    .btn-danger { color: #d32f2f !important; border-color: #fca5a5 !important; }
+    [data-theme="dark"] .btn-danger { color: #f87171 !important; border-color: #991b1b !important; }
+  </style>
+  <script>
+    (function() { try { document.documentElement.setAttribute('data-theme', localStorage.getItem('jiraTool.theme') || 'light'); } catch (e) {} })();
+  </script>
+</head>
+<body>
+  <div class="container" style="margin-top: 2rem;">
+    <div class="header">
+      <h1 style="font-size: 1.6rem; color: var(--text-strong); margin: 0;">⚙️ Meu Perfil</h1>
+      <div class="header-right"><a class="back-link" href="/">← Voltar ao Início</a></div>
+    </div>
+    
+    <div id="content" style="display:none;">
+      <!-- Dados do Usuário Organizados -->
+      <div class="row">
+        <div>
+          <label>Nome</label>
+          <input type="text" id="name" readonly />
+          <p class="hint">Nome registrado na ferramenta</p>
+        </div>
+        <div>
+          <label>Email Jira</label>
+          <input type="text" id="jiraEmail" readonly />
+          <p class="hint">Email de integração com a API</p>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 0.5rem;">
+        <div>
+          <label>Username</label>
+          <input type="text" id="username" readonly />
+          <p class="hint">Nome de usuário para login</p>
+        </div>
+        <div>
+          <label>Data de Cadastro</label>
+          <input type="text" id="createdAt" readonly />
+          <p class="hint">Quando esta conta foi criada</p>
+        </div>
+      </div>
+
+      <!-- Credenciais da API -->
+      <div class="section">
+        <h2>🔑 Credenciais do Jira</h2>
+        <label for="jiraToken">Novo Token Jira</label>
+        <input type="password" id="jiraToken" placeholder="Cole seu novo token da API aqui" />
+        <p class="hint">Cole um novo token para substituir o anterior. Se deixado em branco, o atual será mantido.</p>
+        
+        <label for="currentPassword">Senha Atual</label>
+        <input type="password" id="currentPassword" placeholder="Sua senha da ferramenta" />
+        <p class="hint">Por segurança, digite sua senha para salvar alterações de API.</p>
+        
+        <button type="button" id="btnSalvar" onclick="salvarCredenciais()">✓ Salvar Alterações</button>
+      </div>
+
+      <!-- Segurança e Logout -->
+      <div class="section">
+        <h2>🔐 Segurança e Sessão</h2>
+        <div class="action-group">
+          <div class="action-item">
+            <button type="button" class="secondary" onclick="window.location.href='/change-password.html'">🔑 Mudar Senha Pessoal</button>
+            <p class="hint">Atualize sua senha de login periodicamente para manter sua conta segura.</p>
+          </div>
+          <div class="action-item">
+            <button type="button" class="secondary btn-danger" onclick="logout()">🚪 Sair da Conta (Logout)</button>
+            <p class="hint">Encerre sua sessão com segurança neste dispositivo ao terminar de usar a ferramenta.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="message" class="message" style="display:none;"></div>
+    </div>
+    <div id="loading" style="text-align: center; color: var(--text-muted);">Carregando seus dados...</div>
+  </div>
+
+  <script>
+    const contentDiv = document.getElementById('content');
+    const loadingDiv = document.getElementById('loading');
+    const messageDiv = document.getElementById('message');
+
+    function showMessage(text, type = 'info') {
+      messageDiv.textContent = text;
+      messageDiv.className = `message ${type}`;
+      messageDiv.style.display = 'block';
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function carregarPerfil() {
+      try {
+        const resp = await fetch('/api/auth/session');
+        const result = await resp.json();
+        
+        if (!result.authenticated) { 
+          window.location.href = '/login.html'; 
+          return; 
+        }
+        
+        const user = result.user;
+        if (user.requirePasswordChange) { 
+          window.location.href = '/change-password.html?forced=1'; 
+          return; 
+        }
+        
+        // Populando dados organizadamente
+        document.getElementById('name').value = user.name || '-';
+        document.getElementById('jiraEmail').value = user.jiraEmail || '-';
+        document.getElementById('username').value = user.username || '-';
+        document.getElementById('createdAt').value = formatDate(user.createdAt);
+        
+        loadingDiv.style.display = 'none';
+        contentDiv.style.display = 'block';
+      } catch (error) { 
+        showMessage('Erro ao carregar perfil. Verifique sua conexão.', 'error'); 
+      }
+    }
+
+    async function salvarCredenciais() {
+      const jiraToken = document.getElementById('jiraToken').value.trim();
+      const currentPassword = document.getElementById('currentPassword').value;
+      
+      if (!currentPassword) { 
+        showMessage('Senha atual é obrigatória para atualizar dados.', 'error'); 
+        return; 
+      }
+      
+      document.getElementById('btnSalvar').disabled = true;
+      try {
+        const resp = await fetch('/api/auth/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jiraToken: jiraToken || undefined, currentPassword }),
+        });
+        
+        const result = await resp.json();
+        
+        if (!resp.ok) { 
+          showMessage(result.error || 'Erro ao atualizar credenciais.', 'error'); 
+          return; 
+        }
+        
+        showMessage('✓ Credenciais atualizadas com sucesso!', 'success');
+        document.getElementById('currentPassword').value = '';
+        document.getElementById('jiraToken').value = '';
+      } catch (error) { 
+        showMessage('Erro crítico ao comunicar com o servidor.', 'error'); 
+      } finally { 
+        document.getElementById('btnSalvar').disabled = false; 
+      }
+    }
+
+    async function logout() {
+      try {
+        document.body.style.opacity = '0.5'; // UX de transição
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } finally {
+        window.location.href = '/login.html';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', carregarPerfil);
+  </script>
+</body>
+</html>

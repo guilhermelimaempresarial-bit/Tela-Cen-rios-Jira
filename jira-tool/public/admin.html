@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administração - Jira Tool</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* CSS específico da Tabela Admin */
+    :root {
+      --danger: #d32f2f;
+      --success: #15803d;
+      --warning: #b45309;
+    }
+
+    [data-theme="dark"] {
+      --danger: #f87171;
+      --success: #4ade80;
+      --warning: #fbbf24;
+    }
+
+    body {
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px var(--shadow);
+      padding: 24px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+      display: none;
+      font-size: 0.9rem;
+    }
+
+    .alert.error {
+      background: rgba(220, 38, 38, 0.08);
+      color: #991b1b;
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      display: block;
+    }
+
+    .alert.success {
+      background: rgba(34, 197, 94, 0.08);
+      color: #166534;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      display: block;
+    }
+
+    [data-theme="dark"] .alert.error {
+      background: rgba(127, 29, 29, 0.4);
+      color: #fca5a5;
+      border-color: rgba(153, 27, 27, 0.6);
+    }
+
+    [data-theme="dark"] .alert.success {
+      background: rgba(22, 101, 52, 0.4);
+      color: #86efac;
+      border-color: rgba(21, 128, 61, 0.8);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      border-radius: 10px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: var(--surface-2);
+      color: var(--text-strong);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+
+    .badge.mfa-on,
+    .badge.status-active {
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--success);
+      border-color: rgba(34, 197, 94, 0.25);
+    }
+
+    .badge.mfa-off {
+      background: rgba(148, 163, 184, 0.15);
+      color: var(--text-muted);
+      border-color: rgba(148, 163, 184, 0.3);
+    }
+
+    .badge.role-admin {
+      background: rgba(230, 73, 128, 0.12);
+      color: #be185d;
+      border-color: rgba(190, 24, 93, 0.25);
+    }
+
+    .badge.role-qa {
+      background: rgba(59, 130, 246, 0.12);
+      color: #1d4ed8;
+      border-color: rgba(59, 130, 246, 0.25);
+    }
+
+    .badge.status-blocked {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+      border-color: rgba(220, 38, 38, 0.25);
+    }
+
+    /* Adicionado margin: 0 para anular o margin-top global e vertical-align para alinhar perfeito com o texto */
+    .small-action {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-input);
+      background: var(--surface-2);
+      color: var(--text);
+      cursor: pointer;
+      margin: 0;
+      vertical-align: middle;
+    }
+
+    .small-action.danger {
+      background: rgba(220, 38, 38, 0.1);
+      border-color: rgba(220, 38, 38, 0.25);
+      color: var(--danger);
+    }
+
+    .small-action.success {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.25);
+      color: var(--success);
+    }
+  </style>
+  <script>
+    (function () { try { document.documentElement.setAttribute('data-theme', localStorage.getItem('jiraTool.theme') || 'light'); } catch (e) { } })();
+  </script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1 style="margin:0; color:var(--text-strong);">🛡️ Administração</h1>
+        <p class="hint">Controle de usuários e MFA</p>
+      </div>
+      <div class="header-right">
+        <a class="theme-toggle" style="text-decoration:none;" href="/">Voltar</a>
+        <button class="small" onclick="abrirModalCriarUsuario()">+ Novo Usuário</button>
+        <button class="small" onclick="carregarUsuarios()">Atualizar</button>
+      </div>
+    </div>
+    <div id="alert" class="alert"></div>
+
+    <div id="modalCriarUsuario"
+      style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+      <div
+        style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; max-width:500px; width:90%;">
+        <h2 style="color:var(--text-strong); margin-bottom:16px;">Criar Novo Usuário</h2>
+        <div id="modalAlert" class="alert" style="margin-bottom:16px;"></div>
+        <div>
+          <label>Nome *</label><input id="formName" type="text" />
+          <label>Username *</label><input id="formUsername" type="text" />
+          <label>Email Jira *</label><input id="formJiraEmail" type="email" />
+          <label>Domínio Jira</label><input id="formJiraDomain" type="text" />
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+          <button class="secondary small" onclick="fecharModalCriarUsuario()">Cancelar</button>
+          <button class="small" onclick="criarNovoUsuario()">Criar Usuário</button>
+        </div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>MFA</th>
+          <th>Cadastro</th>
+          <th>Bloqueio</th>
+          <th>Ação MFA</th>
+          <th>Senha</th>
+        </tr>
+      </thead>
+      <tbody id="usersTableBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // Lógica JS do Admin mantida exata...
+    const alertBox = document.getElementById('alert');
+    const tableBody = document.getElementById('usersTableBody');
+    function setAlert(message, type = 'success') { alertBox.textContent = message; alertBox.className = `alert ${type}`; }
+    function formatDate(dateStr) { if (!dateStr) return '-'; return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+    async function carregarUsuarios() {
+      try {
+        const resp = await fetch('/api/admin/users');
+        const result = await resp.json();
+        if (!resp.ok) { setAlert(result.error || 'Erro', 'error'); return; }
+        tableBody.innerHTML = '';
+        if (!result.users || result.users.length === 0) { tableBody.innerHTML = '<tr><td colspan="8">Nenhum usuário.</td></tr>'; return; }
+        for (const user of result.users) {
+          const blocked = Boolean(user.loginBlocked);
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong>${user.name || '-'}</strong><br><span class="hint">${user.username || '-'}</span></td>
+            <td><span class="badge role-${user.role === 'admin' ? 'admin' : 'qa'}">${user.role === 'admin' ? 'Admin' : 'QA'}</span></td>
+            <td><span class="badge ${blocked ? 'status-blocked' : 'status-active'}">${blocked ? 'Bloqueado' : 'Ativo'}</span></td>
+            <td><span class="badge ${user.mfaEnabled ? 'mfa-on' : 'mfa-off'}">${user.mfaEnabled ? 'Ativado' : 'Desativado'}</span></td>
+            <td>${formatDate(user.createdAt)}</td>
+            <td><button class="small-action ${blocked ? 'success' : 'danger'}" onclick="toggleBloqueioUsuario('${user.id}', ${blocked})">${blocked ? 'Desbloquear' : 'Bloquear'}</button></td>
+            <td>${user.mfaEnabled ? `<button class="small-action danger" onclick="desativarMfa('${user.id}')">Desativar MFA</button>` : `<span class="hint">Desativado</span>`}</td>
+            <td><button class="small-action" style="color:var(--warning);" onclick="resetarSenhaUsuario('${user.id}', '${user.name}')">Resetar Senha</button></td>
+          `;
+          tableBody.appendChild(row);
+        }
+      } catch (error) { setAlert('Erro ao carregar.', 'error'); }
+    }
+    async function desativarMfa(userId) {
+      if (!window.confirm('Desativar MFA?')) return;
+      await fetch(`/api/admin/users/${userId}/mfa`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaEnabled: false }) });
+      await carregarUsuarios();
+    }
+    async function toggleBloqueioUsuario(userId, blocked) {
+      if (!window.confirm(`Confirmar ação?`)) return;
+      await fetch(`/api/admin/users/${userId}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ loginBlocked: !blocked }) });
+      await carregarUsuarios();
+    }
+    async function resetarSenhaUsuario(userId, userName) {
+      if (!window.confirm(`Resetar senha de ${userName}?`)) return;
+      const resp = await fetch(`/api/admin/users/${userId}/reset-password`, { method: 'POST' });
+      const result = await resp.json();
+      setAlert(`Senha de ${userName} resetada: ${result.tempPassword}`, 'success');
+      await carregarUsuarios();
+    }
+    function abrirModalCriarUsuario() { document.getElementById('modalCriarUsuario').style.display = 'flex'; }
+    function fecharModalCriarUsuario() { document.getElementById('modalCriarUsuario').style.display = 'none'; }
+    async function criarNovoUsuario() {
+      const name = document.getElementById('formName').value; const username = document.getElementById('formUsername').value;
+      const resp = await fetch('/api/admin/users/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, username, jiraEmail: document.getElementById('formJiraEmail').value, jiraDomain: document.getElementById('formJiraDomain').value })
+      });
+      const result = await resp.json();
+      if (!resp.ok) { document.getElementById('modalAlert').textContent = result.error; return; }
+      fecharModalCriarUsuario();
+      setAlert(`Usuário criado! Senha temporária: ${result.tempPassword}`, 'success');
+      await carregarUsuarios();
+    }
+    document.addEventListener('DOMContentLoaded', async () => {
+      const resp = await fetch('/api/auth/session');
+      const result = await resp.json();
+      if (result.authenticated && result.user.role === 'admin') carregarUsuarios();
+      else window.location.href = '/login.html';
+    });
+  </script>
+</body>
+
+</html>

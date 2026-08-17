@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jira Tool - Login</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* CSS específico do Login */
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+    .login-container { width: 100%; display: flex; justify-content: center; align-items: center; flex: 1; margin-bottom: 2rem; }
+    .container { width: min(460px, 90vw); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
+    .message { margin-top: 12px; font-size: 0.9rem; padding: 12px; border-radius: 6px; display: none; }
+    .error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .info { background: #e0f2fe; color: #1e40af; border: 1px solid #bae6fd; }
+    [data-theme="dark"] .error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+    [data-theme="dark"] .success { background: #166534; color: #86efac; border: 1px solid #15803d; }
+    [data-theme="dark"] .info { background: rgba(30, 64, 175, 0.4); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.5); }
+  </style>
+  <script>
+    (function() { try { document.documentElement.setAttribute('data-theme', localStorage.getItem('jiraTool.theme') || 'light'); } catch (e) {} })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <div>
+        <h1>Ferramenta de Cenários do Jira</h1>
+        <p class="subtitle">Automação segura de cenários de teste no Jira</p>
+      </div>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙 Tema escuro</button>
+    </div>
+  </header>
+
+  <div class="login-container">
+    <div class="container">
+      <h1 id="formTitle" style="font-size: 1.4rem; margin-bottom: 0.5rem; color: var(--text-strong);">Login</h1>
+      <p class="hint" id="formSubtitle">Acesse sua conta para usar a ferramenta</p>
+      
+      <div id="loginEmailGroup">
+        <label for="username">Username</label>
+        <input id="username" type="text" placeholder="Seu username" />
+      </div>
+      
+      <label for="password">Senha</label>
+      <input id="password" type="password" placeholder="Sua senha" />
+
+      <!-- Bloco de MFA normal (Dia a dia) -->
+      <div id="mfaSection" style="display:none;">
+        <label for="mfaLoginCode">Código MFA</label>
+        <input id="mfaLoginCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Código de 6 dígitos" />
+      </div>
+
+      <!-- Bloco de Primeira Configuração do MFA -->
+      <div id="mfaSetupBlock" style="display:none; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+        <div style="text-align:center; margin-bottom: 12px;">
+          <p class="hint" style="margin-bottom: 8px;">Escaneie o QR Code no seu App Autenticador</p>
+          <img id="mfaQrImage" alt="QR Code" style="max-width: 220px; border-radius: 8px; display:none;" />
+        </div>
+        <label for="mfaSetupCode">Código MFA gerado</label>
+        <input id="mfaSetupCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Digite o código do app" />
+      </div>
+      
+      <button class="primary" style="width:100%; margin-top: 1.5rem;" id="submitBtn" onclick="submitForm()">Entrar</button>
+      <div id="message" class="message"></div>
+    </div>
+  </div>
+
+  <script>
+    let pendingMfaSetup = false;
+    let pendingMfaQr = '';
+
+    // Verifica se foi redirecionado por sessão expirada/inatividade
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('motivo') === 'inativo' || urlParams.get('motivo') === 'sessao_expirada') {
+      setMessage('Sua sessão expirou por segurança. Faça login novamente.', 'info');
+    }
+    
+    function updateThemeButton() {
+      const atual = document.documentElement.getAttribute('data-theme') || 'light';
+      const btn = document.getElementById('themeToggle');
+      if (btn) btn.textContent = atual === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro';
+    }
+
+    function toggleTheme() {
+      const atual = document.documentElement.getAttribute('data-theme') || 'light';
+      const novo = atual === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', novo);
+      try { localStorage.setItem('jiraTool.theme', novo); } catch (e) {}
+      updateThemeButton();
+    }
+
+    function setMessage(text, type = '') {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.className = 'message ' + type;
+      el.style.display = text ? 'block' : 'none';
+    }
+
+    function handleMfaRequired(qrCode) {
+      if (pendingMfaSetup) {
+        document.getElementById('mfaSetupBlock').style.display = 'block';
+        document.getElementById('mfaSection').style.display = 'none';
+        if (qrCode) {
+          const img = document.getElementById('mfaQrImage');
+          img.src = qrCode; 
+          img.style.display = 'inline-block';
+        }
+      } else {
+        document.getElementById('mfaSection').style.display = 'block';
+      }
+    }
+
+    async function submitForm() {
+      const payload = {
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+      };
+
+      const mfaCode = document.getElementById(pendingMfaSetup ? 'mfaSetupCode' : 'mfaLoginCode').value.trim();
+      if (mfaCode) payload.mfaCode = mfaCode;
+      
+      if (!payload.username || !payload.password) { 
+        setMessage('Username e senha são obrigatórios.', 'error'); 
+        return; 
+      }
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Autenticando...';
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        // 1. Sucesso Parcial: O usuário está logando pela 1ª vez e precisa configurar o MFA
+        if (response.ok && result.requiresMfaSetup) {
+          pendingMfaSetup = true; 
+          pendingMfaQr = result.qrCode || ''; 
+          handleMfaRequired(pendingMfaQr); 
+          setMessage(result.message || 'Configure o MFA para continuar.', 'info');
+          btn.disabled = false;
+          btn.textContent = 'Verificar Código e Entrar';
+          return;
+        }
+
+        // 2. Tratamento de Erros e Requisições Pendentes
+        if (!response.ok) {
+          // Cenário A: MFA já configurado, mas o usuário ainda não digitou o código.
+          // Aqui nós mostramos a mensagem como 'info' em vez de erro, se o usuário NÃO tiver enviado o código na tentativa.
+          if (result.requiresMfa) { 
+            document.getElementById('mfaSection').style.display = 'block'; 
+            
+            // Se o usuário já tentou enviar um mfaCode mas o backend retornou requerimento (significa que errou)
+            if(payload.mfaCode) {
+               setMessage(result.error || 'Código MFA inválido.', 'error'); 
+            } else {
+               // Primeira vez que bate no MFA, mostra mensagem informativa
+               setMessage('Por favor, digite seu código MFA para continuar.', 'info'); 
+            }
+          }
+          // Cenário B: Erro na hora de colocar o código da primeira configuração
+          else if (result.requiresMfaSetup) {
+            handleMfaRequired(pendingMfaQr);
+            // Mostra o erro só se ele tentou enviar um código, senão info
+             if(payload.mfaCode) {
+               setMessage(result.error || 'Código de configuração inválido.', 'error');
+             } else {
+               setMessage('Configure o MFA para continuar.', 'info');
+             }
+          }
+          // Cenário C: Qualquer outro erro (senha errada, conta bloqueada, etc)
+          else {
+            setMessage(result.error || 'Erro no login.', 'error');
+          }
+          
+          btn.disabled = false;
+          btn.textContent = 'Entrar';
+          return;
+        }
+
+        // 3. Login 100% de Sucesso
+        setMessage('Autenticado com sucesso! Redirecionando...', 'success');
+        if (result.requirePasswordChange) { 
+          window.location.href = '/change-password.html?forced=1'; 
+        } else { 
+          window.location.href = '/'; 
+        }
+      } catch (error) { 
+        setMessage('Erro de conexão com o servidor.', 'error'); 
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+    }
+
+    // Permite logar apertando "Enter"
+    document.getElementById('password').addEventListener('keypress', (e) => { if (e.key === 'Enter') submitForm(); });
+    document.getElementById('mfaLoginCode').addEventListener('keypress', (e) => { if (e.key === 'Enter') submitForm(); });
+    document.getElementById('mfaSetupCode').addEventListener('keypress', (e) => { if (e.key === 'Enter') submitForm(); });
+    
+    document.addEventListener('DOMContentLoaded', updateThemeButton);
+  </script>
+</body>
+</html>

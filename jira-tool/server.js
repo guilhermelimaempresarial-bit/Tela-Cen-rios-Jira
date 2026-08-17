@@ -1,31 +1,68 @@
 require('dotenv').config();
 
+global.crypto = require('crypto');
+
 const express = require('express');
 const session = require('express-session');
 const https = require('https');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const path = require('path');
+const mongoose = require('mongoose'); // Importando o Mongoose
 
 const app = express();
 const PORT = process.env.PORT || 3333;
-const DATA_DIR = path.join(__dirname, 'data');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'jira-tool-dev-secret-change-me';
 const TOKEN_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'jira-tool-token-key-32bytes-long';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'guilherme.lima@nimbi.com.br').trim().toLowerCase();
+
+// ==============================================================
+// ☁️ CONEXÃO COM O MONGODB
+// ==============================================================
+if (!process.env.MONGO_URI) {
+  console.error('❌ ERRO CRÍTICO: Variável MONGO_URI não encontrada no .env ou no Render.');
+  process.exit(1);
+}
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ Conectado com sucesso ao MongoDB Atlas!'))
+  .catch(err => console.error('❌ Erro ao conectar no MongoDB:', err));
+
+// ==============================================================
+// 📋 MODELO (SCHEMA) DO USUÁRIO NO BANCO DE DADOS
+// ==============================================================
+const userSchema = new mongoose.Schema({
+  id: { type: String, unique: true },
+  name: String,
+  username: String,
+  passwordHash: String,
+  requirePasswordChange: Boolean,
+  jiraEmail: String,
+  jiraDomain: String,
+  jiraTokenEncrypted: String,
+  mfaEnabled: Boolean,
+  mfaSecretEncrypted: String,
+  role: String,
+  loginAttempts: { type: Number, default: 0 },
+  loginBlocked: { type: Boolean, default: false },
+  lockedAt: Date,
+  createdAt: Date,
+  updatedAt: Date
+});
+const User = mongoose.model('User', userSchema);
+
+// ==============================================================
+// 🔒 LOCK DE LOGIN E CRIPTOGRAFIA
+// ==============================================================
 const userLoginLocks = new Map();
 
 async function withUserLoginLock(email, callback) {
   const key = String(email || '').trim().toLowerCase();
   const previous = userLoginLocks.get(key) || Promise.resolve();
   let release;
-  const current = new Promise((resolve) => {
-    release = resolve;
-  });
+  const current = new Promise((resolve) => { release = resolve; });
   userLoginLocks.set(key, current);
 
   await previous;
@@ -33,33 +70,8 @@ async function withUserLoginLock(email, callback) {
     return await callback();
   } finally {
     release();
-    if (userLoginLocks.get(key) === current) {
-      userLoginLocks.delete(key);
-    }
+    if (userLoginLocks.get(key) === current) userLoginLocks.delete(key);
   }
-}
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2));
-  }
-}
-
-function loadUsers() {
-  ensureDataDir();
-  try {
-    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8') || '[]');
-  } catch (error) {
-    return [];
-  }
-}
-
-function saveUsers(users) {
-  ensureDataDir();
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
 }
 
 function getEncryptionKey() {
@@ -84,91 +96,105 @@ function decryptToken(value) {
     const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), iv);
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
-  } catch (error) {
-    return '';
-  }
+  } catch (error) { return ''; }
 }
 
+
+// ==============================================================
+// ⚙️ CONFIGURAÇÕES DO EXPRESS E MIDDLEWARES
+// ==============================================================
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false,
-    maxAge: 1000 * 60 * 60 * 8,
-  },
+  cookie: { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 1000 * 60 * 60 * 8 },
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Não autenticado. Faça login na aplicação.' });
   }
+
+  const user = await User.findOne({ id: req.session.userId });
+  
+  // A Mágica de Segurança: Tempo de Login vs Tempo de Modificação da Conta
+  const timeSessao = req.session.loginTime || 0;
+  const timeUpdate = user?.updatedAt ? user.updatedAt.getTime() : 0;
+
+  // 1. Se o Admin bloqueou ou alterou os dados (como reset de senha) APÓS o login, mata a sessão!
+  if (!user || user.loginBlocked || timeUpdate > timeSessao) {
+    req.session.destroy(() => {});
+    return res.status(401).json({ error: 'Sessão invalidada por motivos de segurança. Faça login novamente.' });
+  }
+
+  // 2. Bloqueia APIs se exige troca de senha (mas libera a rota de trocar a senha em si)
+  if (user.requirePasswordChange && !req.path.includes('/change-password')) {
+    return res.status(403).json({ error: 'Ação bloqueada. Você precisa alterar sua senha obrigatória.' });
+  }
+
   next();
 }
 
-function requireAdmin(req, res, next) {
-  const user = getCurrentUser(req);
+async function requireAdmin(req, res, next) {
+  const user = await User.findOne({ id: req.session.userId });
   if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'Acesso restrito ao administrador.' });
   }
   next();
 }
 
-function requireAuthPage(req, res, next) {
-  if (!req.session || !req.session.userId) {
+async function requireAuthPage(req, res, next) {
+  if (!req.session || !req.session.userId) return res.redirect('/login.html');
+  
+  const user = await User.findOne({ id: req.session.userId });
+  
+  const timeSessao = req.session.loginTime || 0;
+  const timeUpdate = user?.updatedAt ? user.updatedAt.getTime() : 0;
+
+  // Mata a sessão de navegação se a conta foi modificada pelo Admin
+  if (!user || user.loginBlocked || timeUpdate > timeSessao) {
+    req.session.destroy(() => {});
     return res.redirect('/login.html');
   }
+  
+  // Se exige troca, permite o acesso APENAS à página de trocar senha
+  if (user.requirePasswordChange && req.path !== '/change-password.html') {
+    return res.redirect('/change-password.html?forced=1');
+  }
+  
   next();
 }
 
-function requireAdminPage(req, res, next) {
-  const user = getCurrentUser(req);
-  if (!user) {
-    return res.redirect('/login.html');
-  }
-  if (user.role !== 'admin') {
-    return res.redirect('/');
-  }
+async function requireAdminPage(req, res, next) {
+  const user = await User.findOne({ id: req.session.userId });
+  if (!user || user.role !== 'admin') return res.redirect('/');
   next();
 }
 
-function getCurrentUser(req) {
-  const users = loadUsers();
-  return users.find((u) => u.id === req.session.userId) || null;
-}
+// ==============================================================
+// 🌐 ROTAS DE PÁGINAS (HTML)
+// ==============================================================
+app.get('/login.html', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/profile.html', requireAuthPage, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'profile.html')));
+app.get('/change-password.html', requireAuthPage, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'change-password.html')));
+app.get('/admin', requireAuthPage, requireAdminPage, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/admin.html', requireAuthPage, requireAdminPage, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/', requireAuthPage, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.get('/login.html', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'login.html'));
-});
+// ==============================================================
+// 🔑 ROTAS DE AUTENTICAÇÃO E SESSÃO
+// ==============================================================
+app.get('/api/auth/session', async (req, res) => {
+  if (!req.session || !req.session.userId) return res.json({ authenticated: false });
+  const user = await User.findOne({ id: req.session.userId });
+  
+  const timeSessao = req.session.loginTime || 0;
+  const timeUpdate = user?.updatedAt ? user.updatedAt.getTime() : 0;
 
-app.get('/profile.html', requireAuth, (_req, res) => {
-  res.sendFile(path.join(__dirname, 'profile.html'));
-});
-
-app.get('/change-password.html', requireAuth, (_req, res) => {
-  res.sendFile(path.join(__dirname, 'change-password.html'));
-});
-
-app.get('/admin', requireAuthPage, requireAdminPage, (_req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
-});
-
-app.get('/admin.html', requireAuthPage, requireAdminPage, (_req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
-});
-
-app.get('/api/auth/session', (req, res) => {
-  if (!req.session || !req.session.userId) {
-    return res.json({ authenticated: false });
-  }
-
-  const user = getCurrentUser(req);
-  if (!user) {
+  if (!user || user.loginBlocked || timeUpdate > timeSessao) {
     req.session.destroy(() => {});
     return res.json({ authenticated: false });
   }
@@ -176,637 +202,279 @@ app.get('/api/auth/session', (req, res) => {
   res.json({
     authenticated: true,
     user: {
-      id: user.id,
-      name: user.name,
-      username: user.username || user.email,
-      jiraEmail: user.jiraEmail,
+      id: user.id, name: user.name, username: user.username, jiraEmail: user.jiraEmail,
       requirePasswordChange: Boolean(user.requirePasswordChange),
-      role: user.role,
-      createdAt: user.createdAt,
-      mfaEnabled: Boolean(user.mfaEnabled),
+      role: user.role, createdAt: user.createdAt, mfaEnabled: Boolean(user.mfaEnabled),
     },
   });
 });
 
-app.post('/api/auth/setup-mfa', requireAuth, async (req, res) => {
-  const user = getCurrentUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Usuário não encontrado.' });
-  }
-
-  const { password, confirmChange } = req.body || {};
-  const wantsToChange = confirmChange === true || confirmChange === 'true';
-
-  if (!password || !String(password).trim()) {
-    return res.status(400).json({ error: 'Informe sua senha atual para configurar o MFA.' });
-  }
-
-  const passwordOk = await bcrypt.compare(String(password), user.passwordHash);
-  if (!passwordOk) {
-    return res.status(401).json({ error: 'Senha atual incorreta.' });
-  }
-
-  if (user.mfaEnabled && !wantsToChange) {
-    return res.status(400).json({ error: 'Confirme que você deseja trocar o MFA.' });
-  }
-
-  const secret = speakeasy.generateSecret({ length: 20, name: 'Jira Tool - Nimbi' });
-  const otpauth = secret.otpauth_url;
-
-  req.session.pendingMfaChange = {
-    userId: user.id,
-    mfaSecret: secret.base32,
-    createdAt: Date.now(),
-  };
-
-  const qrCode = await QRCode.toDataURL(otpauth);
-  res.json({
-    success: true,
-    requireMfaSetup: false,
-    requirePasswordChange: Boolean(user.requirePasswordChange),
-    qrCode,
-    message: user.mfaEnabled
-      ? 'Confirme a troca do MFA. Escaneie o novo QR code e valide o código do autenticator para finalizar a alteração.'
-      : 'Escaneie este QR code no Google Authenticator ou Authy.',
-    isChangingMfa: Boolean(user.mfaEnabled),
-  });
-});
-
-app.post('/api/auth/enable-mfa', requireAuth, async (req, res) => {
-  const { code, password } = req.body || {};
-  if (!code) {
-    return res.status(400).json({ error: 'Código MFA é obrigatório.' });
-  }
-
-  const user = getCurrentUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Usuário não encontrado.' });
-  }
-
-  const pending = req.session.pendingMfaChange;
-  const isChangingMfa = Boolean(pending && pending.userId === user.id);
-
-  if (isChangingMfa) {
-    if (password) {
-      const passwordOk = await bcrypt.compare(String(password), user.passwordHash);
-      if (!passwordOk) {
-        return res.status(401).json({ error: 'Senha incorreta. A troca do MFA não foi concluída.' });
-      }
-    }
-
-    const valid = speakeasy.totp.verify({
-      secret: pending.mfaSecret,
-      encoding: 'base32',
-      token: String(code).trim(),
-      window: 1,
-    });
-
-    if (!valid) {
-      return res.status(401).json({
-        error: 'Código do novo MFA inválido. O MFA antigo foi mantido.',
-      });
-    }
-
-    const users = loadUsers();
-    const userIndex = users.findIndex((u) => u.id === user.id);
-    if (userIndex === -1) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
-    }
-
-    users[userIndex].mfaEnabled = true;
-    users[userIndex].mfaSecretEncrypted = encryptToken(pending.mfaSecret);
-    users[userIndex].updatedAt = new Date().toISOString();
-    saveUsers(users);
-
-    req.session.pendingMfaChange = null;
-    return res.json({
-      success: true,
-      message: 'MFA trocado com sucesso.',
-    });
-  }
-
-  if (!user.mfaSecretEncrypted) {
-    return res.status(400).json({ error: 'Você precisa configurar o MFA antes de ativá-lo.' });
-  }
-
-  const secret = decryptToken(user.mfaSecretEncrypted);
-  const valid = speakeasy.totp.verify({
-    secret,
-    encoding: 'base32',
-    token: String(code).trim(),
-    window: 1,
-  });
-  if (!valid) {
-    return res.status(401).json({ error: 'Código MFA inválido.' });
-  }
-
-  const users = loadUsers();
-  const userIndex = users.findIndex((u) => u.id === user.id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Usuário não encontrado.' });
-  }
-
-  users[userIndex].mfaEnabled = true;
-  users[userIndex].updatedAt = new Date().toISOString();
-  saveUsers(users);
-
-  res.json({
-    success: true,
-    message: 'MFA ativado com sucesso.',
-  });
-});
-
-
 app.post('/api/auth/login', async (req, res) => {
   const { username, password, mfaCode } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username e senha são obrigatórios.' });
-  }
-
+  if (!username || !password) return res.status(400).json({ error: 'Username e senha são obrigatórios.' });
   const normalizedUsername = String(username).trim().toLowerCase();
 
   await withUserLoginLock(normalizedUsername, async () => {
-    const users = loadUsers();
-    const user = users.find((u) => (u.username || u.email || '').toLowerCase() === normalizedUsername);
-
-    if (!user || Boolean(user.loginBlocked)) {
-      return res.status(401).json({ error: 'Credenciais inválidas.' });
-    }
+    const user = await User.findOne({ username: normalizedUsername });
+    if (!user || Boolean(user.loginBlocked)) return res.status(401).json({ error: 'Credenciais inválidas.' });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      const currentAttempts = Number(user.loginAttempts || 0) + 1;
-      user.loginAttempts = currentAttempts;
-      user.updatedAt = new Date().toISOString();
-
-      if (currentAttempts >= 5) {
+      user.loginAttempts = Number(user.loginAttempts || 0) + 1;
+      user.updatedAt = new Date();
+      if (user.loginAttempts >= 5) {
         user.loginBlocked = true;
-        user.lockedAt = new Date().toISOString();
+        user.lockedAt = new Date();
       }
-
-      saveUsers(users);
+      await user.save();
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
 
     user.loginAttempts = 0;
     user.loginBlocked = false;
     user.lockedAt = null;
-    user.updatedAt = new Date().toISOString();
-    saveUsers(users);
+    user.updatedAt = new Date();
+    await user.save();
 
     if (!user.mfaEnabled) {
       if (!mfaCode) {
         const secret = speakeasy.generateSecret({ length: 20, name: 'Jira Tool - Nimbi' });
         const qrCode = await QRCode.toDataURL(secret.otpauth_url);
-        req.session.pendingMfaLogin = {
-          userId: user.id,
-          mfaSecret: secret.base32,
-        };
-
-        return res.status(200).json({
-          success: false,
-          requiresMfaSetup: true,
-          qrCode,
-          message: 'Este usuário ainda não possui MFA. Configure-o para continuar.',
-        });
+        req.session.pendingMfaLogin = { userId: user.id, mfaSecret: secret.base32 };
+        return res.status(200).json({ success: false, requiresMfaSetup: true, qrCode, message: 'Configure o MFA para continuar.' });
       }
-
       const pending = req.session.pendingMfaLogin;
-      if (!pending || pending.userId !== user.id) {
-        return res.status(401).json({ error: 'Sessão de MFA expirada. Tente novamente.', requiresMfaSetup: true });
-      }
+      if (!pending || pending.userId !== user.id) return res.status(401).json({ error: 'Sessão expirada.', requiresMfaSetup: true });
+      
+      const valid = speakeasy.totp.verify({ secret: pending.mfaSecret, encoding: 'base32', token: String(mfaCode).trim(), window: 1 });
+      if (!valid) return res.status(401).json({ error: 'Código MFA inválido.', requiresMfaSetup: true });
 
-      const valid = speakeasy.totp.verify({
-        secret: pending.mfaSecret,
-        encoding: 'base32',
-        token: String(mfaCode).trim(),
-        window: 1,
-      });
-
-      if (!valid) {
-        return res.status(401).json({ error: 'Código MFA inválido.', requiresMfaSetup: true });
-      }
-
-      const userIndex = users.findIndex((u) => u.id === user.id);
-      if (userIndex !== -1) {
-        users[userIndex].mfaEnabled = true;
-        users[userIndex].mfaSecretEncrypted = encryptToken(pending.mfaSecret);
-        users[userIndex].updatedAt = new Date().toISOString();
-        saveUsers(users);
-      }
+      user.mfaEnabled = true;
+      user.mfaSecretEncrypted = encryptToken(pending.mfaSecret);
+      user.updatedAt = new Date();
+      await user.save();
       req.session.pendingMfaLogin = null;
     } else if (!mfaCode) {
-      return res.status(401).json({
-        error: 'Código MFA obrigatório.',
-        requiresMfa: true,
-      });
+      return res.status(401).json({ error: 'Código MFA obrigatório.', requiresMfa: true });
     } else {
       const secret = decryptToken(user.mfaSecretEncrypted);
-      const valid = speakeasy.totp.verify({
-        secret,
-        encoding: 'base32',
-        token: String(mfaCode).trim(),
-        window: 1,
-      });
-      if (!valid) {
-        return res.status(401).json({
-          error: 'Código MFA inválido.',
-          requiresMfa: true,
-        });
-      }
+      const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: String(mfaCode).trim(), window: 1 });
+      if (!valid) return res.status(401).json({ error: 'Código MFA inválido.', requiresMfa: true });
     }
 
+    // Marca a Sessão com o tempo exato em que ele conseguiu logar
     req.session.userId = user.id;
+    req.session.loginTime = Date.now();
+    
     return res.json({
-      success: true,
-      requirePasswordChange: Boolean(user.requirePasswordChange),
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username || user.email,
-        jiraEmail: user.jiraEmail,
-        requirePasswordChange: Boolean(user.requirePasswordChange),
-        role: user.role,
-        mfaEnabled: true,
-      },
+      success: true, requirePasswordChange: Boolean(user.requirePasswordChange),
+      user: { id: user.id, name: user.name, username: user.username, role: user.role, mfaEnabled: true }
     });
   });
 });
 
 app.post('/api/auth/validate-password', async (req, res) => {
   const { username, password } = req.body || {};
-
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username e senha são obrigatórios.' });
-  }
-
-  const users = loadUsers();
-  const normalizedUsername = String(username).trim().toLowerCase();
-  const user = users.find((u) => (u.username || u.email || '').toLowerCase() === normalizedUsername);
-  if (!user) {
-    return res.status(401).json({ error: 'Credenciais inválidas.' });
-  }
-
-  const ok = await bcrypt.compare(String(password), user.passwordHash);
-  if (!ok) {
-    return res.status(401).json({ error: 'Senha incorreta.' });
-  }
-
+  if (!username || !password) return res.status(400).json({ error: 'Username e senha são obrigatórios.' });
+  const user = await User.findOne({ username: String(username).trim().toLowerCase() });
+  if (!user || !(await bcrypt.compare(String(password), user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
   return res.json({ success: true, message: 'Senha validada.' });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ success: true });
-  });
+  req.session.destroy(() => { res.json({ success: true }); });
+});
+
+// ==============================================================
+// 🛡️ ROTAS DE PERFIL E MFA
+// ==============================================================
+app.post('/api/auth/setup-mfa', requireAuth, async (req, res) => {
+  const user = await User.findOne({ id: req.session.userId });
+  const { password, confirmChange } = req.body || {};
+  if (!password || !(await bcrypt.compare(String(password), user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
+  if (user.mfaEnabled && String(confirmChange) !== 'true') return res.status(400).json({ error: 'Confirme que deseja trocar.' });
+
+  const secret = speakeasy.generateSecret({ length: 20, name: 'Jira Tool - Nimbi' });
+  req.session.pendingMfaChange = { userId: user.id, mfaSecret: secret.base32 };
+  const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+  res.json({ success: true, qrCode, isChangingMfa: Boolean(user.mfaEnabled) });
+});
+
+app.post('/api/auth/enable-mfa', requireAuth, async (req, res) => {
+  const { code, password } = req.body || {};
+  const user = await User.findOne({ id: req.session.userId });
+  const pending = req.session.pendingMfaChange;
+  
+  if (pending && pending.userId === user.id) {
+    if (password && !(await bcrypt.compare(String(password), user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
+    if (!speakeasy.totp.verify({ secret: pending.mfaSecret, encoding: 'base32', token: String(code).trim(), window: 1 })) return res.status(401).json({ error: 'Código inválido.' });
+    
+    user.mfaEnabled = true;
+    user.mfaSecretEncrypted = encryptToken(pending.mfaSecret);
+    user.updatedAt = new Date();
+    await user.save();
+    
+    req.session.loginTime = Date.now(); // Mantém o usuário logado após ação própria
+    req.session.pendingMfaChange = null;
+    return res.json({ success: true, message: 'MFA ativado/trocado.' });
+  }
+  
+  if (!user.mfaSecretEncrypted || !speakeasy.totp.verify({ secret: decryptToken(user.mfaSecretEncrypted), encoding: 'base32', token: String(code).trim(), window: 1 })) return res.status(401).json({ error: 'Código inválido.' });
+  user.mfaEnabled = true;
+  user.updatedAt = new Date();
+  await user.save();
+  
+  req.session.loginTime = Date.now();
+  res.json({ success: true });
 });
 
 app.post('/api/auth/update-profile', requireAuth, async (req, res) => {
   const { jiraToken, currentPassword } = req.body || {};
+  const user = await User.findOne({ id: req.session.userId });
+  if (!currentPassword || !(await bcrypt.compare(currentPassword, user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
 
-  if (!currentPassword) {
-    return res.status(400).json({ error: 'Senha atual é obrigatória.' });
-  }
-
-  const users = loadUsers();
-  const user = getCurrentUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Usuário não encontrado.' });
-  }
-
-  const passwordOk = await bcrypt.compare(currentPassword, user.passwordHash);
-  if (!passwordOk) {
-    return res.status(401).json({ error: 'Senha atual incorreta.' });
-  }
-
-  const userIndex = users.findIndex((u) => u.id === user.id);
-  if (userIndex === -1) {
-    return res.status(401).json({ error: 'Usuário não encontrado.' });
-  }
-
-
-  if (jiraToken) {
-    users[userIndex].jiraTokenEncrypted = encryptToken(jiraToken);
-  }
-  users[userIndex].updatedAt = new Date().toISOString();
-
-  saveUsers(users);
-
-  res.json({
-    success: true,
-    message: 'Perfil atualizado com sucesso.',
-  });
+  if (jiraToken) user.jiraTokenEncrypted = encryptToken(jiraToken);
+  user.updatedAt = new Date();
+  await user.save();
+  
+  req.session.loginTime = Date.now(); // Atualiza tempo de login para não invalidar própria sessão
+  res.json({ success: true, message: 'Perfil atualizado.' });
 });
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres.' });
+  const user = await User.findOne({ id: req.session.userId });
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) return res.status(401).json({ error: 'Senha atual incorreta.' });
 
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias.' });
-  }
-
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres.' });
-  }
-
-  const users = loadUsers();
-  const user = getCurrentUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Usuário não encontrado.' });
-  }
-
-  const passwordOk = await bcrypt.compare(currentPassword, user.passwordHash);
-  if (!passwordOk) {
-    return res.status(401).json({ error: 'Senha atual incorreta.' });
-  }
-
-  const userIndex = users.findIndex((u) => u.id === user.id);
-  if (userIndex === -1) {
-    return res.status(401).json({ error: 'Usuário não encontrado.' });
-  }
-
-  users[userIndex].passwordHash = await bcrypt.hash(newPassword, 10);
-  users[userIndex].requirePasswordChange = false;
-  users[userIndex].updatedAt = new Date().toISOString();
-
-  saveUsers(users);
-
-  res.json({
-    success: true,
-    message: 'Senha alterada com sucesso.',
-  });
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.requirePasswordChange = false;
+  user.updatedAt = new Date();
+  await user.save();
+  
+  req.session.loginTime = Date.now(); // Atualiza tempo para manter logado após mudar a senha
+  res.json({ success: true, message: 'Senha alterada com sucesso.' });
 });
 
-app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
-  const users = loadUsers().map((user) => ({
-    id: user.id,
-    name: user.name,
-    username: user.username || user.email,
-    role: user.role,
-    mfaEnabled: Boolean(user.mfaEnabled),
-    loginBlocked: Boolean(user.loginBlocked),
-    loginAttempts: Number(user.loginAttempts || 0),
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  }));
-
-    res.json({
-    success: true,
-    users,
-  });
+// ==============================================================
+// 🛠️ ROTAS DE ADMINISTRAÇÃO
+// ==============================================================
+app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+  const users = await User.find().select('-passwordHash -mfaSecretEncrypted -jiraTokenEncrypted');
+  res.json({ success: true, users });
 });
 
 app.post('/api/admin/users/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const users = loadUsers();
-  const userIndex = users.findIndex((u) => u.id === id);
+  const user = await User.findOne({ id: req.params.id });
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Usuário não encontrado.' });
-  }
-
-  try {
-    const generatedPassword = crypto.randomBytes(4).toString('hex'); // 8 chars
-    const passwordHash = await bcrypt.hash(generatedPassword, 10);
-    const timestamp = new Date().toISOString();
-
-    users[userIndex].passwordHash = passwordHash;
-    users[userIndex].requirePasswordChange = true;
-    users[userIndex].updatedAt = timestamp;
-    
-    // Opcional: Se quiser que o usuário tenha que configurar MFA de novo ao resetar, 
-    // mas a solicitação diz manter a lógica, então apenas resetamos a senha.
-
-    saveUsers(users);
-
-    return res.json({
-      success: true,
-      tempPassword: generatedPassword,
-      userName: users[userIndex].name,
-      message: 'Senha resetada com sucesso.'
-    });
-  } catch (error) {
-    return res.status(500).json({ error: 'Erro ao resetar senha: ' + error.message });
-  }
+  const generatedPassword = crypto.randomBytes(4).toString('hex');
+  user.passwordHash = await bcrypt.hash(generatedPassword, 10);
+  user.requirePasswordChange = true;
+  user.updatedAt = new Date();
+  await user.save();
+  res.json({ success: true, tempPassword: generatedPassword, userName: user.name });
 });
 
 app.post('/api/admin/users/create', requireAuth, requireAdmin, async (req, res) => {
   const { name, username, jiraEmail, jiraToken, jiraDomain } = req.body || {};
-
-  if (!name || !username || !jiraEmail) {
-    return res.status(400).json({ error: 'Nome, username e email do Jira são obrigatórios.' });
-  }
-
+  if (!name || !username || !jiraEmail) return res.status(400).json({ error: 'Campos obrigatórios faltando.' });
+  
   const normalizedUsername = String(username).trim().toLowerCase();
-  const users = loadUsers();
+  if (await User.findOne({ username: normalizedUsername })) return res.status(409).json({ error: 'Username já existe.' });
 
-  const existing = users.find((u) => (u.username || u.email || '').toLowerCase() === normalizedUsername);
-  if (existing) {
-    return res.status(409).json({ error: 'Username já está registrado no sistema.' });
-  }
+  const generatedPassword = crypto.randomBytes(4).toString('hex');
+  const passwordHash = await bcrypt.hash(generatedPassword, 10);
+  
+  const newUser = new User({
+    id: crypto.randomUUID(),
+    name: String(name).trim(),
+    username: normalizedUsername,
+    passwordHash,
+    requirePasswordChange: true,
+    jiraEmail: String(jiraEmail).trim(),
+    jiraDomain: jiraDomain || process.env.JIRA_DOMAIN || 'nimbi-portal.atlassian.net',
+    jiraTokenEncrypted: jiraToken ? encryptToken(String(jiraToken).trim()) : '',
+    mfaEnabled: false,
+    role: normalizedUsername === ADMIN_EMAIL ? 'admin' : 'qa',
+    loginBlocked: true,
+    lockedAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 
-  if (jiraEmail && String(jiraEmail).trim() !== '') {
-    const normalizedJiraEmail = String(jiraEmail).trim().toLowerCase();
-    const existingJira = users.find((u) => (u.jiraEmail || '').toLowerCase() === normalizedJiraEmail);
-    if (existingJira) {
-      return res.status(409).json({ error: 'Email do Jira já está registrado no sistema.' });
-    }
-  }
-
-  try {
-    const generatedPassword = crypto.randomBytes(4).toString('hex'); // 8 chars
-    const passwordHash = await bcrypt.hash(generatedPassword, 10);
-    const timestamp = new Date().toISOString();
-    const newUser = {
-      id: crypto.randomUUID(),
-      name: String(name).trim(),
-      username: normalizedUsername,
-      passwordHash,
-      requirePasswordChange: true,
-      jiraEmail: jiraEmail ? String(jiraEmail).trim() : '',
-      jiraDomain: jiraDomain ? String(jiraDomain).trim() : (process.env.JIRA_DOMAIN || 'nimbi-portal.atlassian.net'),
-      jiraTokenEncrypted: jiraToken ? encryptToken(String(jiraToken).trim()) : '',
-      mfaEnabled: false,
-      mfaSecretEncrypted: '',
-      role: normalizedUsername === ADMIN_EMAIL ? 'admin' : 'qa',
-      loginAttempts: 0,
-      loginBlocked: true,
-      lockedAt: timestamp,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-
-                users.push(newUser);
-    saveUsers(users);
-
-    // Retorno simplificado e direto para o admin
-    return res.status(201).json({
-      success: true,
-      tempPassword: generatedPassword,
-      userName: newUser.name,
-      message: 'Usuário criado com sucesso.'
-    });
-  } catch (error) {
-    return res.status(500).json({ error: 'Erro ao criar usuário: ' + error.message });
-  }
+  await newUser.save();
+  res.status(201).json({ success: true, tempPassword: generatedPassword, userName: newUser.name });
 });
 
 app.patch('/api/admin/users/:id/status', requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { loginBlocked } = req.body || {};
+  const user = await User.findOne({ id: req.params.id });
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-  if (typeof loginBlocked !== 'boolean') {
-    return res.status(400).json({ error: 'Campo loginBlocked obrigatório.' });
-  }
-
-  const users = loadUsers();
-  const userIndex = users.findIndex((user) => user.id === id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Usuário não encontrado.' });
-  }
-
-  const target = users[userIndex];
-  target.loginBlocked = loginBlocked;
-  target.loginAttempts = loginBlocked ? Math.max(Number(target.loginAttempts || 0), 5) : 0;
-  target.lockedAt = loginBlocked ? (target.lockedAt || new Date().toISOString()) : null;
-  target.updatedAt = new Date().toISOString();
-  saveUsers(users);
-
-  res.json({
-    success: true,
-    user: {
-      id: target.id,
-      username: target.username || target.email,
-      name: target.name,
-      loginBlocked: Boolean(target.loginBlocked),
-    },
-  });
+  user.loginBlocked = Boolean(req.body.loginBlocked);
+  user.loginAttempts = user.loginBlocked ? 5 : 0;
+  user.lockedAt = user.loginBlocked ? new Date() : null;
+  user.updatedAt = new Date();
+  await user.save();
+  res.json({ success: true });
 });
 
 app.patch('/api/admin/users/:id/mfa', requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { mfaEnabled } = req.body || {};
+  const user = await User.findOne({ id: req.params.id });
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-  if (typeof mfaEnabled !== 'boolean') {
-    return res.status(400).json({ error: 'Campo mfaEnabled obrigatório.' });
-  }
-
-  const users = loadUsers();
-  const userIndex = users.findIndex((user) => user.id === id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Usuário não encontrado.' });
-  }
-
-  const target = users[userIndex];
-  if (mfaEnabled === false) {
-    target.mfaEnabled = false;
-    target.mfaSecretEncrypted = '';
+  if (req.body.mfaEnabled === false) {
+    user.mfaEnabled = false;
+    user.mfaSecretEncrypted = '';
   } else {
-    target.mfaEnabled = true;
+    user.mfaEnabled = true;
   }
-  target.updatedAt = new Date().toISOString();
-  saveUsers(users);
-
-  res.json({
-    success: true,
-    user: {
-      id: target.id,
-      username: target.username || target.email,
-      name: target.name,
-      mfaEnabled: Boolean(target.mfaEnabled),
-    },
-  });
+  user.updatedAt = new Date();
+  await user.save();
+  res.json({ success: true });
 });
 
-app.get('/api/jira/config', requireAuth, (req, res) => {
-  const user = getCurrentUser(req);
+// ==============================================================
+// 🔗 ROTAS DE PROXY PARA O JIRA
+// ==============================================================
+app.get('/api/jira/config', requireAuth, async (req, res) => {
+  const user = await User.findOne({ id: req.session.userId });
   res.json({
     authenticated: true,
     hasCredentials: Boolean(user && user.jiraEmail && user.jiraTokenEncrypted),
-    domain: user ? (user.jiraDomain || process.env.JIRA_DOMAIN || 'nimbi-portal.atlassian.net') : '',
+    domain: user ? user.jiraDomain : '',
   });
 });
 
-function resolveJiraCredentials(req) {
-  const user = getCurrentUser(req);
+app.post('/api/jira', requireAuth, async (req, res) => {
+  const user = await User.findOne({ id: req.session.userId });
   const payload = req.body || {};
+  const email = user ? user.jiraEmail : '';
+  const token = user ? decryptToken(user.jiraTokenEncrypted) : '';
+  const domain = user ? user.jiraDomain : 'nimbi-portal.atlassian.net';
+  const { method, endpoint, body } = payload;
 
-  if (user) {
-    return {
-      email: user.jiraEmail,
-      token: decryptToken(user.jiraTokenEncrypted),
-      domain: user.jiraDomain || payload.domain || process.env.JIRA_DOMAIN || 'nimbi-portal.atlassian.net',
-    };
-  }
-
-  const email = (payload.email || process.env.JIRA_EMAIL || '').trim();
-  const token = (payload.token || process.env.JIRA_API_TOKEN || '').trim();
-  const domain = (payload.domain || process.env.JIRA_DOMAIN || 'nimbi-portal.atlassian.net').trim();
-  return { email, token, domain };
-}
-
-app.post('/api/jira', requireAuth, (req, res) => {
-  const { method, endpoint, body } = req.body || {};
-  const { email, token, domain } = resolveJiraCredentials(req);
-
-  if (!email || !token || !domain || !endpoint) {
-    return res.status(400).json({
-      error: 'Credenciais do Jira ausentes para o usuário autenticado no backend.',
-    });
-  }
+  if (!email || !token || !endpoint) return res.status(400).json({ error: 'Credenciais ou endpoint ausentes.' });
 
   const auth = Buffer.from(`${email}:${token}`).toString('base64');
   const postData = body ? JSON.stringify(body) : '';
-
   const options = {
-    hostname: domain,
-    path: endpoint,
-    method: method || 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(postData),
-    },
+    hostname: domain, path: endpoint, method: method || 'POST',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
   };
 
   const proxyReq = https.request(options, (proxyRes) => {
     let data = '';
     proxyRes.on('data', (chunk) => { data += chunk; });
-    proxyRes.on('end', () => {
-      res.status(proxyRes.statusCode).send(data);
-    });
+    proxyRes.on('end', () => res.status(proxyRes.statusCode).send(data));
   });
 
-  proxyReq.on('error', (err) => {
-    res.status(500).json({ error: err.message });
-  });
-
+  proxyReq.on('error', (err) => res.status(500).json({ error: err.message }));
   proxyReq.write(postData);
   proxyReq.end();
 });
 
-app.get('/', (req, res) => {
-  if (!req.session || !req.session.userId) {
-    return res.redirect('/login.html');
-  }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/profile', (req, res) => {
-  if (!req.session || !req.session.userId) {
-    return res.redirect('/login.html');
-  }
-  res.sendFile(path.join(__dirname, 'profile.html'));
-});
-
-app.get('/change-password', (req, res) => {
-  if (!req.session || !req.session.userId) {
-    return res.redirect('/login.html');
-  }
-  res.sendFile(path.join(__dirname, 'change-password.html'));
-});
-
 app.listen(PORT, () => {
   console.log(`Jira Tool V2 rodando em http://localhost:${PORT}`);
-  console.log('Autenticação: sessão do backend + token do Jira em armazenamento criptografado no servidor');
+  console.log('Autenticação: MongoDB Atlas + Sessão do Backend');
 });
