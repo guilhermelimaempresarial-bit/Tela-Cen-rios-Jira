@@ -1181,7 +1181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 // ===== UX: CONTROLE DE INATIVIDADE POR SEGURANÇA =====
-const TEMPO_INATIVIDADE_MINUTOS = 30; // Altere o tempo limite aqui (em minutos)
+const TEMPO_INATIVIDADE_MINUTOS = 10; // Altere o tempo limite aqui (em minutos)
 let timeoutSessao;
 
 function resetarTemporizadorSessao() {
