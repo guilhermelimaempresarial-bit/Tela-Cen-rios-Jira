@@ -51,12 +51,13 @@
     <div class="row">
       <div>
         <label for="parentKey">Issue Pai (História)</label>
-        <input type="text" id="parentKey" placeholder="Ex: COR-10179">
+        <input type="text" id="parentKey" placeholder="Ex: COR-10179" onblur="carregarCategorias()">
       </div>
       <div>
         <label for="issueType">Tipo de Issue</label>
         <input type="text" id="issueType" value="Subtask de teste">
       </div>
+      <!-- 💡 CORREÇÃO: Esta div estava faltando e quebrava o Flexbox! -->
       <div>
         <label for="statusFinalAlvo">Status Final</label>
         <select id="statusFinalAlvo">
@@ -65,14 +66,22 @@
           <option value="especificacao concluida" selected>Especificação concluída</option>
           <option value="pronto para teste">Pronto para teste</option>
           <option value="impedida construcao">Impedida construção</option>
-          <option value="impedida teste">Impedida teste</option>
           <option value="em teste">Em teste</option>
-          <option value="reprovado">Reprovado</option>
           <option value="aprovado">Aprovado</option>
-          <option value="fechado">Fechado</option>
-          <option value="obsoleto">Obsoleto</option>
         </select>
-        <p class="hint">Após criar, o sistema leva cada cenário automaticamente até este status (mesma navegação da aba Alterar Status).</p>
+      </div>
+       <!-- CAMPO CUSTOMIZADO: Categorias (Select2 Style Vanilla) -->
+      <div>
+        <label>Categorias</label>
+        <div class="custom-multiselect" id="categoryMultiSelect">
+          <div class="multiselect-tags" id="categoryTags">
+            <input type="text" id="categorySearch" class="multiselect-search" placeholder="Buscar categoria..." autocomplete="off">
+          </div>
+          <div class="multiselect-dropdown" id="categoryDropdown" style="display: none;">
+            <div class="multiselect-option disabled">Aguardando História...</div>
+          </div>
+        </div>
+        <p class="hint">Clique para buscar ou selecione as categorias desejadas.</p>
       </div>
     </div>
 

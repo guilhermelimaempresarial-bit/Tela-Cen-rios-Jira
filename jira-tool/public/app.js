@@ -105,7 +105,7 @@ function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ===== PARSER DE CENÁRIOS =====
+// ===== PARSER DE CENÁRIOS (SMART ENGINE) =====
 const DEFAULT_SECTION_LABELS = { pre: 'Pré-condição', acao: 'Ação', resultado: 'Resultado Esperado' };
 
 function escapeRegExp(value) {
@@ -128,6 +128,7 @@ function getConfiguredSectionLabels() {
   return labels;
 }
 
+// 💡 CORREÇÃO: Função restaurada para ler as cores escolhidas pelo QA no HTML
 function getConfiguredSectionColors() {
   return {
     pre: document.getElementById('colorPre')?.value || 'warning',
@@ -143,15 +144,17 @@ function buildSectionAliases(customLabels = getConfiguredSectionLabels()) {
     resultado: customLabels.resultado || DEFAULT_SECTION_LABELS.resultado,
   };
 
+  const prefixoPermissivo = '^(?:[\\s\\-\\*\\•\\d\\.\\)]*)';
+  const sufixoPermissivo = '\\b\\s*[:\\-\\-]?\\s*';
+
   return [
-    { sec: 'pre', re: new RegExp('^(?:' + [labels.pre, 'Pré-condição', 'Pré-requisito', 'Contexto', 'Setup', 'Dado', 'Given', 'Precondition', 'precondition'].map(escapeRegExp).join('|') + ')\\s*:?\\s*', 'i') },
-    { sec: 'acao', re: new RegExp('^(?:' + [labels.acao, 'Ação', 'Passos', 'Procedimento', 'Steps', 'Quando', 'When', 'Acao', 'ação'].map(escapeRegExp).join('|') + ')\\s*:?\\s*', 'i') },
-    { sec: 'resultado', re: new RegExp('^(?:' + [labels.resultado, 'Resultado Esperado', 'Esperado', 'Critério de aceite', 'Expected', 'Then', 'Então', 'Resultado'].map(escapeRegExp).join('|') + ')\\s*:?\\s*', 'i') },
+    { sec: 'pre', re: new RegExp(prefixoPermissivo + '(?:' + [labels.pre, 'Pré-condição', 'Pre-condicao', 'Pré-requisito', 'Contexto', 'Setup', 'Dado', 'Given', 'Precondition'].map(escapeRegExp).join('|') + ')' + sufixoPermissivo, 'i') },
+    { sec: 'acao', re: new RegExp(prefixoPermissivo + '(?:' + [labels.acao, 'Ação', 'Acao', 'Passos', 'Procedimento', 'Steps', 'Quando', 'When'].map(escapeRegExp).join('|') + ')' + sufixoPermissivo, 'i') },
+    { sec: 'resultado', re: new RegExp(prefixoPermissivo + '(?:' + [labels.resultado, 'Resultado Esperado', 'Resultado', 'Esperado', 'Critério de aceite', 'Expected', 'Then', 'Então', 'Entao'].map(escapeRegExp).join('|') + ')' + sufixoPermissivo, 'i') },
   ];
 }
 
-const TITLE_RE = /^(?:(?:CT[-\s]?\d+)|(?:cen[aá]rio(?:\s*\d+)?)|(?:scenario)|(?:teste\s*\d+)|(?:\d+[\.\)]))\s*[:\-]?\s*(.*)$/i;
-
+const TITLE_RE = /^(?:[\s\-\*\•]*)(?:(?:CT[-\s]?\d+)|(?:(?:nome\s*do\s*|caso\s*de\s*)?cen[aá]rio(?:\s*\d+)?)|(?:scenario)|(?:(?:nome\s*do\s*)?teste\s*\d*)|(?:t[íi]tulo)|(?:\d+[\.\)]))\s*[:\-]?\s*(.*)$/i;
 function matchSectionAlias(linha) {
   for (const a of buildSectionAliases()) {
     const m = linha.match(a.re);
@@ -164,7 +167,17 @@ function matchSectionAlias(linha) {
 }
 
 function splitBlocos(texto) {
-  const linhas = texto.replace(/\r/g, '').split('\n');
+  // 1. HIGIENIZAÇÃO SÊNIOR: Varre wrappers de metadados de IA (ex: "Task de Teste 10: Detalhamento...")
+  const textoLimpo = texto
+    .split('\n')
+    .filter(linha => {
+      const t = linha.trim();
+      const ehLixoIA = /^\s*task\s*de\s*teste\s*\d*/i.test(t) || /^\s*detalhamento\s*do\s*cen[aá]rio/i.test(t);
+      return !ehLixoIA;
+    })
+    .join('\n');
+
+  const linhas = textoLimpo.replace(/\r/g, '').split('\n');
   const blocos = [];
   let atual = [];
   let ultimaVazia = false;
@@ -175,6 +188,7 @@ function splitBlocos(texto) {
     const linha = raw.trimEnd();
     const t = linha.trim();
 
+    // Quebra por separadores horizontais (ex: --- ou ===)
     if (/^[-=_*]{3,}$/.test(t)) { flush(); ultimaVazia = false; continue; }
 
     const ehTitulo = TITLE_RE.test(t) && !matchSectionAlias(t);
@@ -193,6 +207,16 @@ function splitBlocos(texto) {
 }
 
 function parseBloco(bloco, indexAuto) {
+  const labels = getConfiguredSectionLabels();
+  const preKeys = [labels.pre, 'Pré-condição', 'Pre-condicao', 'Pré-requisito', 'Contexto', 'Setup', 'Dado', 'Given', 'Precondition'].map(escapeRegExp).join('|');
+  const acaoKeys = [labels.acao, 'Ação', 'Acao', 'Passos', 'Procedimento', 'Steps', 'Quando', 'When'].map(escapeRegExp).join('|');
+  const resKeys = [labels.resultado, 'Resultado Esperado', 'Resultado', 'Esperado', 'Critério de aceite', 'Expected', 'Then', 'Então', 'Entao'].map(escapeRegExp).join('|');
+  
+  const allKeys = `(?:${preKeys}|${acaoKeys}|${resKeys})`;
+  const inlineRegex = new RegExp(`([^\\n])\\s*\\b(${allKeys}\\s*[:\\-])`, 'gi');
+  
+  bloco = bloco.replace(inlineRegex, '$1\n$2');
+
   const linhas = bloco.split('\n').map(l => l.trim()).filter(l => l);
   if (linhas.length === 0) return null;
 
@@ -200,16 +224,13 @@ function parseBloco(bloco, indexAuto) {
   let idx = 0;
   let summary = '';
 
-  if (!matchSectionAlias(linhas[0])) {
+ if (!matchSectionAlias(linhas[0])) {
     const bruto = extrairTitulo(linhas[0]);
     summary = garantirPrefixoCT(bruto, indexAuto);
-    if (!/^ct\b/i.test((linhas[0] || '').trim()) && !/^ct[-\s]?\d/i.test((linhas[0] || '').trim())) {
-      warnings.push('prefixo "CT" adicionado ao título');
-    }
     idx = 1;
   } else {
-    summary = garantirPrefixoCT('', indexAuto);
-    warnings.push('sem título — CT gerado automaticamente');
+    summary = garantirPrefixoCT('Cenário Mapeado', indexAuto);
+    // Removemos também o aviso de "sem título", assumindo que a criação automática é o fluxo feliz
   }
 
   let precondition = '';
@@ -219,28 +240,28 @@ function parseBloco(bloco, indexAuto) {
 
   for (let i = idx; i < linhas.length; i++) {
     let linha = linhas[i];
+    const linhaLimpa = linha.replace(/^(?:e|and|mas|but)\s+/i, '').trim();
+    
     const alias = matchSectionAlias(linha);
     if (alias) {
       secaoAtual = alias.sec;
       if (alias.resto) {
-        if (alias.sec === 'pre') precondition += (precondition ? ' ' : '') + alias.resto;
+        if (alias.sec === 'pre') precondition += (precondition ? '\n' : '') + limparBullet(alias.resto);
         else if (alias.sec === 'acao') action.push(limparBullet(alias.resto));
         else if (alias.sec === 'resultado') expected.push(limparBullet(alias.resto));
       }
       continue;
     }
-    linha = linha.replace(/^(e|and)\s+/i, '');
 
-    if (secaoAtual === 'pre') precondition += (precondition ? ' ' : '') + limparBullet(linha);
-    else if (secaoAtual === 'acao') action.push(limparBullet(linha));
-    else if (secaoAtual === 'resultado') expected.push(limparBullet(linha));
+    if (secaoAtual === 'pre') precondition += (precondition ? '\n' : '') + limparBullet(linhaLimpa);
+    else if (secaoAtual === 'acao') action.push(limparBullet(linhaLimpa));
+    else if (secaoAtual === 'resultado') expected.push(limparBullet(linhaLimpa));
     else {
-      action.push(limparBullet(linha));
+      action.push(limparBullet(linhaLimpa));
       if (secaoAtual === null) secaoAtual = 'acao';
     }
   }
 
-  const labels = getConfiguredSectionLabels();
   if (!precondition) warnings.push('sem ' + labels.pre);
   if (action.length === 0) warnings.push('sem ' + labels.acao);
   if (expected.length === 0) warnings.push('sem ' + labels.resultado);
@@ -248,19 +269,41 @@ function parseBloco(bloco, indexAuto) {
   return { summary, precondition, action, expected, _warnings: warnings };
 }
 
-function limparBullet(linha) { return linha.replace(/^[\-\*\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim(); }
+function limparBullet(linha) { 
+  return linha.replace(/^[\-\*\u2022\u2023\u25E6\u2043\u2219]\s*/, '').replace(/^\d+[\.\)\-]\s*/, '').trim(); 
+}
+
+// ===== LIMPEZA E FORMATAÇÃO AVANÇADA DE TÍTULOS (SMART ENGINE) =====
 
 function extrairTitulo(linha) {
-  const t = (linha || '').replace(/:$/, '').trim();
-  const semMarcador = t.replace(/^(cen[aá]rio|scenario|teste)\s*\d*\s*[:\-\u2013]?\s*/i, '').replace(/^\d+[\.\)]\s*/, '').trim();
-  return semMarcador || t;
+  let t = (linha || '').trim();
+
+  // 1. Remove rótulos comuns gerados por IA no início do texto (ex: "Nome do Cenário:", "Título:", "Caso de Teste -")
+  const rotulosIA = /^(?:nome\s*do\s*cen[aá]rio|nome\s*do\s*teste|t[íi]tulo|caso\s*de\s*teste|scenario\s*name|test\s*name)\s*[:\-\u2013]?\s*/i;
+  t = t.replace(rotulosIA, '');
+
+  // 2. Remove palavras-chave secundárias ("Cenário 1.1:", "Teste 2 -", etc)
+  t = t.replace(/^(?:cen[aá]rio|scenario|teste)\s*[\d\.\-]*\s*[:\-\u2013]?\s*/i, '');
+
+  // 3. Remove numerações no padrão de listas de IA (ex: "1.1 ", "1.1.2 ", "1) ", "2 - ")
+  t = t.replace(/^[\d\.\)]+\s*[:\-\u2013]?\s*/, '').trim();
+
+  // 4. Se sobrou um ':' ou '-' solto no início após a limpeza, remove
+  t = t.replace(/^[:\-\u2013]\s*/, '').trim();
+
+  return t || linha;
 }
 
 function garantirPrefixoCT(summary, autoIdx) {
   const s = (summary || '').trim();
-  const jaTemCT = /^ct\b/i.test(s) || /^ct[-\s]?\d/i.test(s);
+  
+  // Verifica se o título já possui o prefixo CT (ex: CT-01, CT1, CT 02)
+  const jaTemCT = /^ct[-\s]?\d+/i.test(s);
   if (jaTemCT) return s;
+
   const prefixo = `CT-${String(autoIdx).padStart(2, '0')}`;
+  
+  // Se o título estiver vazio após a limpeza, retorna apenas o CT-01
   return s ? `${prefixo}: ${s}` : prefixo;
 }
 
@@ -459,10 +502,11 @@ function coletarFormScenarios() {
 
 function buildDescription(c) {
   const labels = getConfiguredSectionLabels();
+  // 💡 CORREÇÃO: Chama a função recuperada acima para aplicar a cor do painel selecionada pelo usuário
   const colors = getConfiguredSectionColors();
+    
   const content = [];
 
-  // Função auxiliar Sênior: Monta o bloco com ou sem painel dinamicamente
   const buildSection = (labelText, colorType, innerContentBlocks) => {
     const titleBlock = { 
       type: 'paragraph', 
@@ -470,10 +514,8 @@ function buildDescription(c) {
     };
     
     if (colorType === 'none') {
-      // Sem cor: injeta o título e o conteúdo diretamente na raiz do documento
       content.push(titleBlock, ...innerContentBlocks);
     } else {
-      // Com cor: envelopa tudo dentro do ADF Panel do Jira
       content.push({
         type: 'panel', 
         attrs: { panelType: colorType },
@@ -482,14 +524,13 @@ function buildDescription(c) {
     }
   };
 
-  // 1. Bloco de Pré-condição
-  buildSection(
-    labels.pre, 
-    colors.pre, 
-    [{ type: 'paragraph', content: [{ type: 'text', text: c.precondition || '—' }] }]
-  );
+  const preText = c.precondition || '—';
+  const preParagraphs = preText.split('\n').map(linha => ({
+    type: 'paragraph',
+    content: [{ type: 'text', text: linha }]
+  }));
+  buildSection(labels.pre, colors.pre, preParagraphs);
 
-  // 2. Bloco de Ação
   buildSection(
     labels.acao, 
     colors.acao, 
@@ -501,7 +542,6 @@ function buildDescription(c) {
     }]
   );
 
-  // 3. Bloco de Resultado Esperado
   buildSection(
     labels.resultado, 
     colors.resultado, 
@@ -529,6 +569,115 @@ async function runWithConcurrency(items, limit, worker) {
   await Promise.all(runners);
   return results;
 }
+// ===== MOTOR DO MULTI-SELECT CUSTOMIZADO =====
+let allCategories = [];
+let selectedCategoriesList = [];
+
+function renderMultiSelectTags() {
+  const container = document.getElementById('categoryTags');
+  const searchInput = document.getElementById('categorySearch');
+  if (!container || !searchInput) return;
+
+  // Limpa as tags antigas da tela sem apagar o input de busca
+  container.querySelectorAll('.multiselect-tag').forEach(el => el.remove());
+
+  // Renderiza as novas pílulas
+  selectedCategoriesList.forEach(cat => {
+    const tag = document.createElement('div');
+    tag.className = 'multiselect-tag';
+    tag.innerHTML = `${escapeHtml(cat)} <span onclick="removeCategory('${escapeHtml(cat)}')">✕</span>`;
+    container.insertBefore(tag, searchInput);
+  });
+}
+
+function renderMultiSelectDropdown(filterText = '') {
+  const dropdown = document.getElementById('categoryDropdown');
+  if (!dropdown) return;
+  dropdown.innerHTML = '';
+  
+  // Exibe apenas as categorias que ainda NÃO foram selecionadas
+  const unselected = allCategories.filter(c => !selectedCategoriesList.includes(c));
+  
+  // 💡 LÓGICA SÊNIOR: Usa startsWith para buscar exatamente o prefixo digitado
+  const filtered = unselected.filter(c => c.toLowerCase().startsWith(filterText.toLowerCase()));
+
+  if (filtered.length === 0) {
+    dropdown.innerHTML = '<div class="multiselect-option disabled">Nenhuma opção disponível</div>';
+    return;
+  }
+
+  filtered.forEach(cat => {
+    const div = document.createElement('div');
+    div.className = 'multiselect-option';
+    div.textContent = cat;
+    div.onclick = () => {
+      selectedCategoriesList.push(cat);
+      document.getElementById('categorySearch').value = '';
+      document.getElementById('categoryDropdown').style.display = 'none';
+      renderMultiSelectTags();
+      renderMultiSelectDropdown();
+    };
+    dropdown.appendChild(div);
+  });
+}
+
+function removeCategory(cat) {
+  selectedCategoriesList = selectedCategoriesList.filter(c => c !== cat);
+  renderMultiSelectTags();
+  renderMultiSelectDropdown(document.getElementById('categorySearch')?.value || '');
+}
+
+// Escuta eventos de clique fora do componente e digitação
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('categorySearch');
+  const dropdown = document.getElementById('categoryDropdown');
+  const multiselect = document.getElementById('categoryMultiSelect');
+
+  if (searchInput && dropdown && multiselect) {
+    // Ao focar no input, abre a lista
+    searchInput.addEventListener('focus', () => {
+      if (allCategories.length > 0) {
+        dropdown.style.display = 'block';
+        renderMultiSelectDropdown(searchInput.value);
+      }
+    });
+
+    // Ao digitar, filtra a lista em tempo real
+    searchInput.addEventListener('input', (e) => {
+      dropdown.style.display = 'block';
+      renderMultiSelectDropdown(e.target.value);
+    });
+
+    // Se clicar fora do componente inteiro, fecha a lista dropdown
+    document.addEventListener('click', (e) => {
+      if (!multiselect.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+  }
+});
+
+async function carregarCategorias() {
+  const parentKey = document.getElementById('parentKey')?.value.trim();
+  const dropdown = document.getElementById('categoryDropdown');
+  
+  if (!parentKey || !dropdown) return;
+
+  dropdown.innerHTML = '<div class="multiselect-option disabled">⏳ Buscando categorias...</div>';
+  allCategories = []; // Reseta estado
+
+  try {
+    const resp = await jiraCall('GET', '/rest/api/3/label');
+    if (resp.status === 200 && resp.data?.values?.length > 0) {
+      allCategories = resp.data.values.sort((a, b) => a.localeCompare(b));
+      renderMultiSelectDropdown();
+    } else {
+      dropdown.innerHTML = '<div class="multiselect-option disabled">Nenhuma categoria encontrada</div>';
+    }
+  } catch (e) {
+    dropdown.innerHTML = '<div class="multiselect-option disabled">Erro ao buscar</div>';
+  }
+}
 
 async function criar() {
   const btn = document.getElementById('btnCriar');
@@ -551,8 +700,24 @@ async function criar() {
     if (btn) btn.disabled = false;
     return;
   }
-  if (!parentKey) { addLog('❌ ERRO: Preencha a Issue Pai'); if (btn) btn.disabled = false; return; }
+  if (!parentKey) { 
+    addLog('❌ ERRO: Preencha a Issue Pai'); 
+    if (btn) btn.disabled = false; 
+    return; 
+  }
 
+  // 💡 TRAVA DE SEGURANÇA (UX): Confirmação explícita da História Pai antes de disparar a API
+  const confirmacaoSeguranca = confirm(
+    `⚠️ ATENÇÃO!\n\nVocê está prestes a criar ${cenarios.length} cenário(s) na História Pai:\n🎯 ${parentKey}\n\nConfirma que a chave da História está correta?`
+  );
+  
+  if (!confirmacaoSeguranca) {
+    addLog('⏹️ Criação cancelada pelo usuário para revisão da Issue Pai.');
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  // Validação de cenários incompletos (apenas 1 declaração)
   const comAvisos = cenarios.filter(c => (c._warnings || []).length > 0);
   if (comAvisos.length > 0) {
     const detalhe = comAvisos.map(c => `   • ${c.summary}: ${c._warnings.join(', ')}`).join('\n');
@@ -563,25 +728,40 @@ async function criar() {
     if (!ok) { addLog('⏹️ Criação cancelada pelo usuário.'); if (btn) btn.disabled = false; return; }
   }
 
+  // Extração única da chave do projeto
   const projectKey = parentKey.split('-')[0];
   addLog(`Criando ${cenarios.length} subtarefas em ${parentKey}...\n`);
 
   addLog('Identificando usuário...');
   const me = await jiraCall('GET', '/rest/api/3/myself');
   const accountId = me.data?.accountId;
-  if (!accountId) { addLog('❌ ERRO: Não foi possível identificar o usuário. Verifique email/token.'); if (btn) btn.disabled = false; return; }
+  if (!accountId) { 
+    addLog('❌ ERRO: Não foi possível identificar o usuário. Verifique email/token.'); 
+    if (btn) btn.disabled = false; 
+    return; 
+  }
   addLog(`Usuário identificado: ${me.data?.displayName || me.data?.emailAddress || 'OK'}\n`);
 
   const createdKeys = [];
-  const montarFields = (c) => ({
-    project: { key: projectKey },
-    parent: { key: parentKey },
-    summary: c.summary,
-    issuetype: { name: issueType },
-    assignee: { accountId },
-    ...(componentName ? { components: [{ name: componentName }] } : {}),
-    description: buildDescription(c),
-  });
+
+  const montarFields = (c) => {
+    const fields = {
+      project: { key: projectKey },
+      parent: { key: parentKey },
+      summary: c.summary,
+      issuetype: { name: issueType },
+      assignee: { accountId },
+      components: [{ name: componentName }],
+      description: buildDescription(c),
+    };
+
+    // Aplicação das categorias selecionadas via Custom Multi-Select
+    if (selectedCategoriesList && selectedCategoriesList.length > 0) {
+      fields.labels = selectedCategoriesList; 
+    }
+
+    return fields;
+  };
 
   const LOTE = 50;
   for (let start = 0; start < cenarios.length; start += LOTE) {
@@ -1181,7 +1361,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 // ===== UX: CONTROLE DE INATIVIDADE POR SEGURANÇA =====
-const TEMPO_INATIVIDADE_MINUTOS = 10; // Altere o tempo limite aqui (em minutos)
+const TEMPO_INATIVIDADE_MINUTOS = 15; // Altere o tempo limite aqui (em minutos)
 let timeoutSessao;
 
 function resetarTemporizadorSessao() {

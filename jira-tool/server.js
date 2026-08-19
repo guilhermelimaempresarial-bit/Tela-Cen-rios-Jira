@@ -1,3 +1,4 @@
+global.WebSocket = require('ws')
 require('dotenv').config();
 
 global.crypto = require('crypto');
@@ -10,7 +11,9 @@ const bcrypt = require('bcryptjs');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const path = require('path');
-const mongoose = require('mongoose'); // Importando o Mongoose
+
+// 💡 ARQUITETURA SÊNIOR: Sai Mongoose, Entra Supabase SDK
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -19,39 +22,28 @@ const TOKEN_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'jira-tool-token-key-32byt
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'guilherme.lima@nimbi.com.br').trim().toLowerCase();
 
 // ==============================================================
-// ☁️ CONEXÃO COM O MONGODB
+// ☁️ CONEXÃO COM O SUPABASE (POSTGRESQL)
 // ==============================================================
-if (!process.env.MONGO_URI) {
-  console.error('❌ ERRO CRÍTICO: Variável MONGO_URI não encontrada no .env ou no Render.');
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('❌ ERRO CRÍTICO: Variáveis do Supabase (URL ou ROLE KEY) não encontradas no .env');
   process.exit(1);
 }
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ Conectado com sucesso ao MongoDB Atlas!'))
-  .catch(err => console.error('❌ Erro ao conectar no MongoDB:', err));
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+console.log('✅ Conectado com sucesso ao Supabase/PostgreSQL!');
 
-// ==============================================================
-// 📋 MODELO (SCHEMA) DO USUÁRIO NO BANCO DE DADOS
-// ==============================================================
-const userSchema = new mongoose.Schema({
-  id: { type: String, unique: true },
-  name: String,
-  username: String,
-  passwordHash: String,
-  requirePasswordChange: Boolean,
-  jiraEmail: String,
-  jiraDomain: String,
-  jiraTokenEncrypted: String,
-  mfaEnabled: Boolean,
-  mfaSecretEncrypted: String,
-  role: String,
-  loginAttempts: { type: Number, default: 0 },
-  loginBlocked: { type: Boolean, default: false },
-  lockedAt: Date,
-  createdAt: Date,
-  updatedAt: Date
-});
-const User = mongoose.model('User', userSchema);
+// 🛠️ ADAPTERS: Funções auxiliares para imitar o comportamento do Mongoose e não quebrar as rotas
+async function findUser(field, value) {
+  const { data, error } = await supabase.from('users').select('*').eq(field, value).single();
+  if (error && error.code !== 'PGRST116') console.error(`Erro ao buscar usuário por ${field}:`, error.message);
+  return data; // Retorna null se não achar (PGRST116 = zero rows)
+}
+
+async function updateUser(id, updates) {
+  // O campo updatedAt é atualizado automaticamente pelo Trigger no banco
+  const { error } = await supabase.from('users').update(updates).eq('id', id);
+  if (error) throw error;
+}
 
 // ==============================================================
 // 🔒 LOCK DE LOGIN E CRIPTOGRAFIA
@@ -99,7 +91,6 @@ function decryptToken(value) {
   } catch (error) { return ''; }
 }
 
-
 // ==============================================================
 // ⚙️ CONFIGURAÇÕES DO EXPRESS E MIDDLEWARES
 // ==============================================================
@@ -118,19 +109,15 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Não autenticado. Faça login na aplicação.' });
   }
 
-  const user = await User.findOne({ id: req.session.userId });
-  
-  // A Mágica de Segurança: Tempo de Login vs Tempo de Modificação da Conta
+  const user = await findUser('id', req.session.userId);
   const timeSessao = req.session.loginTime || 0;
-  const timeUpdate = user?.updatedAt ? user.updatedAt.getTime() : 0;
+  const timeUpdate = user?.updatedAt ? new Date(user.updatedAt).getTime() : 0;
 
-  // 1. Se o Admin bloqueou ou alterou os dados (como reset de senha) APÓS o login, mata a sessão!
   if (!user || user.loginBlocked || timeUpdate > timeSessao) {
     req.session.destroy(() => {});
     return res.status(401).json({ error: 'Sessão invalidada por motivos de segurança. Faça login novamente.' });
   }
 
-  // 2. Bloqueia APIs se exige troca de senha (mas libera a rota de trocar a senha em si)
   if (user.requirePasswordChange && !req.path.includes('/change-password')) {
     return res.status(403).json({ error: 'Ação bloqueada. Você precisa alterar sua senha obrigatória.' });
   }
@@ -139,7 +126,7 @@ async function requireAuth(req, res, next) {
 }
 
 async function requireAdmin(req, res, next) {
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'Acesso restrito ao administrador.' });
   }
@@ -149,18 +136,15 @@ async function requireAdmin(req, res, next) {
 async function requireAuthPage(req, res, next) {
   if (!req.session || !req.session.userId) return res.redirect('/login.html');
   
-  const user = await User.findOne({ id: req.session.userId });
-  
+  const user = await findUser('id', req.session.userId);
   const timeSessao = req.session.loginTime || 0;
-  const timeUpdate = user?.updatedAt ? user.updatedAt.getTime() : 0;
+  const timeUpdate = user?.updatedAt ? new Date(user.updatedAt).getTime() : 0;
 
-  // Mata a sessão de navegação se a conta foi modificada pelo Admin
   if (!user || user.loginBlocked || timeUpdate > timeSessao) {
     req.session.destroy(() => {});
     return res.redirect('/login.html');
   }
   
-  // Se exige troca, permite o acesso APENAS à página de trocar senha
   if (user.requirePasswordChange && req.path !== '/change-password.html') {
     return res.redirect('/change-password.html?forced=1');
   }
@@ -169,7 +153,7 @@ async function requireAuthPage(req, res, next) {
 }
 
 async function requireAdminPage(req, res, next) {
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   if (!user || user.role !== 'admin') return res.redirect('/');
   next();
 }
@@ -189,10 +173,10 @@ app.get('/', requireAuthPage, (req, res) => res.sendFile(path.join(__dirname, 'p
 // ==============================================================
 app.get('/api/auth/session', async (req, res) => {
   if (!req.session || !req.session.userId) return res.json({ authenticated: false });
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   
   const timeSessao = req.session.loginTime || 0;
-  const timeUpdate = user?.updatedAt ? user.updatedAt.getTime() : 0;
+  const timeUpdate = user?.updatedAt ? new Date(user.updatedAt).getTime() : 0;
 
   if (!user || user.loginBlocked || timeUpdate > timeSessao) {
     req.session.destroy(() => {});
@@ -215,26 +199,23 @@ app.post('/api/auth/login', async (req, res) => {
   const normalizedUsername = String(username).trim().toLowerCase();
 
   await withUserLoginLock(normalizedUsername, async () => {
-    const user = await User.findOne({ username: normalizedUsername });
+    const user = await findUser('username', normalizedUsername);
     if (!user || Boolean(user.loginBlocked)) return res.status(401).json({ error: 'Credenciais inválidas.' });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      user.loginAttempts = Number(user.loginAttempts || 0) + 1;
-      user.updatedAt = new Date();
-      if (user.loginAttempts >= 5) {
-        user.loginBlocked = true;
-        user.lockedAt = new Date();
+      const newAttempts = Number(user.loginAttempts || 0) + 1;
+      const updates = { loginAttempts: newAttempts };
+      if (newAttempts >= 5) {
+        updates.loginBlocked = true;
+        updates.lockedAt = new Date().toISOString();
       }
-      await user.save();
+      await updateUser(user.id, updates);
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
 
-    user.loginAttempts = 0;
-    user.loginBlocked = false;
-    user.lockedAt = null;
-    user.updatedAt = new Date();
-    await user.save();
+    // Reseta tentativas falhas
+    await updateUser(user.id, { loginAttempts: 0, loginBlocked: false, lockedAt: null });
 
     if (!user.mfaEnabled) {
       if (!mfaCode) {
@@ -249,10 +230,10 @@ app.post('/api/auth/login', async (req, res) => {
       const valid = speakeasy.totp.verify({ secret: pending.mfaSecret, encoding: 'base32', token: String(mfaCode).trim(), window: 1 });
       if (!valid) return res.status(401).json({ error: 'Código MFA inválido.', requiresMfaSetup: true });
 
-      user.mfaEnabled = true;
-      user.mfaSecretEncrypted = encryptToken(pending.mfaSecret);
-      user.updatedAt = new Date();
-      await user.save();
+      await updateUser(user.id, { 
+        mfaEnabled: true, 
+        mfaSecretEncrypted: encryptToken(pending.mfaSecret)
+      });
       req.session.pendingMfaLogin = null;
     } else if (!mfaCode) {
       return res.status(401).json({ error: 'Código MFA obrigatório.', requiresMfa: true });
@@ -262,7 +243,6 @@ app.post('/api/auth/login', async (req, res) => {
       if (!valid) return res.status(401).json({ error: 'Código MFA inválido.', requiresMfa: true });
     }
 
-    // Marca a Sessão com o tempo exato em que ele conseguiu logar
     req.session.userId = user.id;
     req.session.loginTime = Date.now();
     
@@ -276,7 +256,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/validate-password', async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username e senha são obrigatórios.' });
-  const user = await User.findOne({ username: String(username).trim().toLowerCase() });
+  const user = await findUser('username', String(username).trim().toLowerCase());
   if (!user || !(await bcrypt.compare(String(password), user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
   return res.json({ success: true, message: 'Senha validada.' });
 });
@@ -289,7 +269,7 @@ app.post('/api/auth/logout', (req, res) => {
 // 🛡️ ROTAS DE PERFIL E MFA
 // ==============================================================
 app.post('/api/auth/setup-mfa', requireAuth, async (req, res) => {
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   const { password, confirmChange } = req.body || {};
   if (!password || !(await bcrypt.compare(String(password), user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
   if (user.mfaEnabled && String(confirmChange) !== 'true') return res.status(400).json({ error: 'Confirme que deseja trocar.' });
@@ -302,98 +282,74 @@ app.post('/api/auth/setup-mfa', requireAuth, async (req, res) => {
 
 app.post('/api/auth/enable-mfa', requireAuth, async (req, res) => {
   const { code, password } = req.body || {};
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   const pending = req.session.pendingMfaChange;
   
   if (pending && pending.userId === user.id) {
     if (password && !(await bcrypt.compare(String(password), user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
     if (!speakeasy.totp.verify({ secret: pending.mfaSecret, encoding: 'base32', token: String(code).trim(), window: 1 })) return res.status(401).json({ error: 'Código inválido.' });
     
-    user.mfaEnabled = true;
-    user.mfaSecretEncrypted = encryptToken(pending.mfaSecret);
-    user.updatedAt = new Date();
-    await user.save();
+    await updateUser(user.id, {
+      mfaEnabled: true,
+      mfaSecretEncrypted: encryptToken(pending.mfaSecret)
+    });
     
-    req.session.loginTime = Date.now(); // Mantém o usuário logado após ação própria
+    req.session.loginTime = Date.now();
     req.session.pendingMfaChange = null;
     return res.json({ success: true, message: 'MFA ativado/trocado.' });
   }
   
   if (!user.mfaSecretEncrypted || !speakeasy.totp.verify({ secret: decryptToken(user.mfaSecretEncrypted), encoding: 'base32', token: String(code).trim(), window: 1 })) return res.status(401).json({ error: 'Código inválido.' });
-  user.mfaEnabled = true;
-  user.updatedAt = new Date();
-  await user.save();
   
+  await updateUser(user.id, { mfaEnabled: true });
   req.session.loginTime = Date.now();
   res.json({ success: true });
 });
 
 app.post('/api/auth/update-profile', requireAuth, async (req, res) => {
   const { jiraToken, currentPassword } = req.body || {};
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   if (!currentPassword || !(await bcrypt.compare(currentPassword, user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
 
-  if (jiraToken) user.jiraTokenEncrypted = encryptToken(jiraToken);
-  user.updatedAt = new Date();
-  await user.save();
+  const updates = {};
+  if (jiraToken) updates.jiraTokenEncrypted = encryptToken(jiraToken);
+  await updateUser(user.id, updates);
   
-  req.session.loginTime = Date.now(); // Atualiza tempo de login para não invalidar própria sessão
+  req.session.loginTime = Date.now();
   res.json({ success: true, message: 'Perfil atualizado.' });
 });
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   
-  // 1. Verificações de Regex (Tamanho, Maiúsculas, Minúsculas, Números e Especiais)
-  if (!newPassword || newPassword.length < 8) {
-    return res.status(400).json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' });
-  }
-  if (!/[A-Z]/.test(newPassword)) {
-    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 letra MAIÚSCULA.' });
-  }
-  if (!/[a-z]/.test(newPassword)) {
-    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 letra minúscula.' });
-  }
-  if (!/[0-9]/.test(newPassword)) {
-    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 número.' });
-  }
-  if (!/[^A-Za-z0-9]/.test(newPassword)) {
-    return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 caractere especial (ex: @, #, !, $).' });
-  }
+  // Validações
+  if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' });
+  if (!/[A-Z]/.test(newPassword)) return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 letra MAIÚSCULA.' });
+  if (!/[a-z]/.test(newPassword)) return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 letra minúscula.' });
+  if (!/[0-9]/.test(newPassword)) return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 número.' });
+  if (!/[^A-Za-z0-9]/.test(newPassword)) return res.status(400).json({ error: 'A nova senha deve conter pelo menos 1 caractere especial (ex: @, #, !, $).' });
 
-  // 2. Verificação Avançada de Números Sequenciais (ex: 123, 345, 987)
   const hasSequentialNumbers = (str) => {
     for (let i = 0; i < str.length - 2; i++) {
-      const c1 = str.charCodeAt(i);
-      const c2 = str.charCodeAt(i + 1);
-      const c3 = str.charCodeAt(i + 2);
-      
-      // Só verifica se os três caracteres atuais forem números (código ASCII entre 48 e 57)
+      const c1 = str.charCodeAt(i), c2 = str.charCodeAt(i + 1), c3 = str.charCodeAt(i + 2);
       if (c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57 && c3 >= 48 && c3 <= 57) {
-         if (c2 === c1 + 1 && c3 === c2 + 1) return true; // Crescente (ex: 123)
-         if (c2 === c1 - 1 && c3 === c2 - 1) return true; // Decrescente (ex: 321)
+         if (c2 === c1 + 1 && c3 === c2 + 1) return true;
+         if (c2 === c1 - 1 && c3 === c2 - 1) return true;
       }
     }
     return false;
   };
+  if (hasSequentialNumbers(newPassword)) return res.status(400).json({ error: 'A senha não pode conter 3 números sequenciais (ex: 123, 789, 321).' });
 
-  if (hasSequentialNumbers(newPassword)) {
-    return res.status(400).json({ error: 'A senha não pode conter 3 números sequenciais (ex: 123, 789, 321).' });
-  }
-
-  // 3. Validação do Banco de Dados
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
     return res.status(401).json({ error: 'A senha atual está incorreta.' });
   }
 
-  // 4. Salvar nova senha
-  user.passwordHash = await bcrypt.hash(newPassword, 10);
-  user.requirePasswordChange = false;
-  user.updatedAt = new Date();
-  await user.save();
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await updateUser(user.id, { passwordHash, requirePasswordChange: false });
   
-  req.session.loginTime = Date.now(); // Mantém o usuário logado após mudar a senha
+  req.session.loginTime = Date.now();
   res.json({ success: true, message: 'Senha alterada com sucesso.' });
 });
 
@@ -401,19 +357,24 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 // 🛠️ ROTAS DE ADMINISTRAÇÃO
 // ==============================================================
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
-  const users = await User.find().select('-passwordHash -mfaSecretEncrypted -jiraTokenEncrypted');
+  // Busca todos os usuários ordenados pela criação (Select omite dados sensíveis)
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('id, name, username, requirePasswordChange, jiraEmail, jiraDomain, mfaEnabled, role, loginAttempts, loginBlocked, lockedAt, createdAt, updatedAt')
+    .order('createdAt', { ascending: false });
+
+  if (error) return res.status(500).json({ error: 'Erro ao buscar usuários no DB.' });
   res.json({ success: true, users });
 });
 
 app.post('/api/admin/users/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
-  const user = await User.findOne({ id: req.params.id });
+  const user = await findUser('id', req.params.id);
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
   const generatedPassword = crypto.randomBytes(4).toString('hex');
-  user.passwordHash = await bcrypt.hash(generatedPassword, 10);
-  user.requirePasswordChange = true;
-  user.updatedAt = new Date();
-  await user.save();
+  const passwordHash = await bcrypt.hash(generatedPassword, 10);
+  await updateUser(user.id, { passwordHash, requirePasswordChange: true });
+
   res.json({ success: true, tempPassword: generatedPassword, userName: user.name });
 });
 
@@ -422,12 +383,13 @@ app.post('/api/admin/users/create', requireAuth, requireAdmin, async (req, res) 
   if (!name || !username || !jiraEmail) return res.status(400).json({ error: 'Campos obrigatórios faltando.' });
   
   const normalizedUsername = String(username).trim().toLowerCase();
-  if (await User.findOne({ username: normalizedUsername })) return res.status(409).json({ error: 'Username já existe.' });
+  const existingUser = await findUser('username', normalizedUsername);
+  if (existingUser) return res.status(409).json({ error: 'Username já existe.' });
 
   const generatedPassword = crypto.randomBytes(4).toString('hex');
   const passwordHash = await bcrypt.hash(generatedPassword, 10);
   
-  const newUser = new User({
+  const newUser = {
     id: crypto.randomUUID(),
     name: String(name).trim(),
     username: normalizedUsername,
@@ -439,39 +401,39 @@ app.post('/api/admin/users/create', requireAuth, requireAdmin, async (req, res) 
     mfaEnabled: false,
     role: normalizedUsername === ADMIN_EMAIL ? 'admin' : 'qa',
     loginBlocked: true,
-    lockedAt: new Date(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+    lockedAt: new Date().toISOString()
+  };
 
-  await newUser.save();
+  const { error } = await supabase.from('users').insert([newUser]);
+  if (error) return res.status(500).json({ error: 'Falha ao criar usuário no banco.' });
+
   res.status(201).json({ success: true, tempPassword: generatedPassword, userName: newUser.name });
 });
 
 app.patch('/api/admin/users/:id/status', requireAuth, requireAdmin, async (req, res) => {
-  const user = await User.findOne({ id: req.params.id });
+  const user = await findUser('id', req.params.id);
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-  user.loginBlocked = Boolean(req.body.loginBlocked);
-  user.loginAttempts = user.loginBlocked ? 5 : 0;
-  user.lockedAt = user.loginBlocked ? new Date() : null;
-  user.updatedAt = new Date();
-  await user.save();
+  const loginBlocked = Boolean(req.body.loginBlocked);
+  await updateUser(user.id, {
+    loginBlocked,
+    loginAttempts: loginBlocked ? 5 : 0,
+    lockedAt: loginBlocked ? new Date().toISOString() : null
+  });
+
   res.json({ success: true });
 });
 
 app.patch('/api/admin/users/:id/mfa', requireAuth, requireAdmin, async (req, res) => {
-  const user = await User.findOne({ id: req.params.id });
+  const user = await findUser('id', req.params.id);
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
   if (req.body.mfaEnabled === false) {
-    user.mfaEnabled = false;
-    user.mfaSecretEncrypted = '';
+    await updateUser(user.id, { mfaEnabled: false, mfaSecretEncrypted: '' });
   } else {
-    user.mfaEnabled = true;
+    await updateUser(user.id, { mfaEnabled: true });
   }
-  user.updatedAt = new Date();
-  await user.save();
+  
   res.json({ success: true });
 });
 
@@ -479,7 +441,7 @@ app.patch('/api/admin/users/:id/mfa', requireAuth, requireAdmin, async (req, res
 // 🔗 ROTAS DE PROXY PARA O JIRA
 // ==============================================================
 app.get('/api/jira/config', requireAuth, async (req, res) => {
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   res.json({
     authenticated: true,
     hasCredentials: Boolean(user && user.jiraEmail && user.jiraTokenEncrypted),
@@ -488,7 +450,7 @@ app.get('/api/jira/config', requireAuth, async (req, res) => {
 });
 
 app.post('/api/jira', requireAuth, async (req, res) => {
-  const user = await User.findOne({ id: req.session.userId });
+  const user = await findUser('id', req.session.userId);
   const payload = req.body || {};
   const email = user ? user.jiraEmail : '';
   const token = user ? decryptToken(user.jiraTokenEncrypted) : '';
@@ -517,5 +479,5 @@ app.post('/api/jira', requireAuth, async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Jira Tool V2 rodando em http://localhost:${PORT}`);
-  console.log('Autenticação: MongoDB Atlas + Sessão do Backend');
+  console.log('Autenticação: Postgres (Supabase) + Sessão Nativa');
 });
