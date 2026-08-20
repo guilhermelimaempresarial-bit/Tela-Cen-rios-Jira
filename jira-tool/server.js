@@ -357,11 +357,13 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 // 🛠️ ROTAS DE ADMINISTRAÇÃO
 // ==============================================================
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
-  // Busca todos os usuários ordenados pela criação (Select omite dados sensíveis)
   const { data: users, error } = await supabase
     .from('users')
     .select('id, name, username, requirePasswordChange, jiraEmail, jiraDomain, mfaEnabled, role, loginAttempts, loginBlocked, lockedAt, createdAt, updatedAt')
-    .order('createdAt', { ascending: false });
+    // 1º: Ordena pelo Cargo (Admin sempre no topo, QA embaixo)
+    .order('role', { ascending: true }) 
+    // 2º: Ordena pela Data (Mais antigos em cima, mais novos vão pro final)
+    .order('createdAt', { ascending: true });
 
   if (error) return res.status(500).json({ error: 'Erro ao buscar usuários no DB.' });
   res.json({ success: true, users });
