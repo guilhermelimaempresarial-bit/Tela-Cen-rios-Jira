@@ -66,16 +66,21 @@
         </div>
       </div>
 
-      <!-- Credenciais da API -->
+      <!-- Credenciais de Integração (Jira & Gemini) -->
       <div class="section">
-        <h2>🔑 Credenciais do Jira</h2>
+        <h2>🔑 Credenciais de Integração</h2>
+        
         <label for="jiraToken">Novo Token Jira</label>
-        <input type="password" id="jiraToken" placeholder="Cole seu novo token da API aqui" />
+        <input type="password" id="jiraToken" placeholder="Cole seu novo token da API do Jira" />
         <p class="hint">Cole um novo token para substituir o anterior. Se deixado em branco, o atual será mantido.</p>
         
+        <label for="geminiToken">Nova Chave de API Gemini (IA)</label>
+        <input type="password" id="geminiToken" placeholder="Cole sua chave da API do Gemini (AIzaSy...)" />
+        <p class="hint">Obtenha sua chave gratuita no <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent); font-weight: 600;">Google AI Studio</a>. Deixe em branco para manter a atual.</p>
+
         <label for="currentPassword">Senha Atual</label>
         <input type="password" id="currentPassword" placeholder="Sua senha da ferramenta" />
-        <p class="hint">Por segurança, digite sua senha para salvar alterações de API.</p>
+        <p class="hint">Por segurança, digite sua senha atual para autorizar as alterações de credenciais.</p>
         
         <button type="button" id="btnSalvar" onclick="salvarCredenciais()">✓ Salvar Alterações</button>
       </div>
@@ -148,11 +153,17 @@
 
     async function salvarCredenciais() {
       const jiraToken = document.getElementById('jiraToken').value.trim();
+      const geminiToken = document.getElementById('geminiToken').value.trim();
       const currentPassword = document.getElementById('currentPassword').value;
       
       if (!currentPassword) { 
         showMessage('Senha atual é obrigatória para atualizar dados.', 'error'); 
         return; 
+      }
+
+      if (!jiraToken && !geminiToken) {
+        showMessage('Informe ao menos um novo token (Jira ou Gemini) para atualizar.', 'error');
+        return;
       }
       
       document.getElementById('btnSalvar').disabled = true;
@@ -160,7 +171,11 @@
         const resp = await fetch('/api/auth/update-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jiraToken: jiraToken || undefined, currentPassword }),
+          body: JSON.stringify({ 
+            jiraToken: jiraToken || undefined, 
+            geminiToken: geminiToken || undefined, 
+            currentPassword 
+          }),
         });
         
         const result = await resp.json();
@@ -173,6 +188,7 @@
         showMessage('✓ Credenciais atualizadas com sucesso!', 'success');
         document.getElementById('currentPassword').value = '';
         document.getElementById('jiraToken').value = '';
+        document.getElementById('geminiToken').value = '';
       } catch (error) { 
         showMessage('Erro crítico ao comunicar com o servidor.', 'error'); 
       } finally { 

@@ -272,12 +272,25 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/api/ai/generate', requireAuth, async (req, res) => {
-  // 1. Extrai o texto e a imagem (se houver) do body
   const { promptUser, image } = req.body; 
   if (!promptUser && !image) return res.status(400).json({ error: 'Prompt e imagem vazios' });
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+    // 1. Busca o usuário logado para recuperar a chave individual
+    const user = await findUser('id', req.session.userId);
+    const userCustomKey = user?.geminiKeyEncrypted ? decryptToken(user.geminiKeyEncrypted) : null;
+
+    // ⛔ TRAVA ABSOLUTA: Se não houver chave individual cadastrada, cancela a requisição
+    if (!userCustomKey) {
+      return res.status(400).json({ 
+        error: '⚠️ Você não possui uma chave de API do Gemini cadastrada. Acesse seu Perfil (⚙️ Perfil) no topo da tela e configure sua chave para utilizar a IA.' 
+      });
+    }
+
+    // 2. Instancia o modelo exclusivamente com o token individual do QA
+    const userGenAI = new GoogleGenerativeAI(userCustomKey);
+    const model = userGenAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+
     const systemPrompt = `Você é um Analista de QA Sênior. 
     O usuário pedirá para você criar cenários de teste baseados em uma funcionalidade, imagem ou documento.
     Você DEVE retornar a resposta EXCLUSIVAMENTE em formato JSON, sendo um Array de objetos.
@@ -292,7 +305,6 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
       }
     ]`;
 
-    // 💡 ARQUITETURA MULTIMODAL: Monta as peças do quebra-cabeça
     const contentParts = [
       systemPrompt,
       `Pedido do usuário: ${promptUser || 'Analise o arquivo anexado e gere cenários.'}`
@@ -307,29 +319,27 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
       });
     }
 
-    // Passa o array de partes em vez de apenas texto
     const result = await model.generateContent(contentParts);
     const textoResposta = result.response.text();
     
-    // Higieniza o retorno teimoso do Gemini
     const cleanText = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
     const cenariosJson = JSON.parse(cleanText);
     
     res.json({ success: true, cenarios: cenariosJson });
- } catch (error) {
+
+  } catch (error) {
     console.error('Erro na IA:', error);
     
-    // 💡 LÓGICA SÊNIOR DE UX: Intercepta o 429 (Limite de Cota)
-    if (error.status === 429 || error.message.includes('429')) {
-      return res.status(429).json({ 
-        error: 'Você atingiu o limite de uso gratuito da IA (muitas requisições seguidas). Aguarde um minuto e tente novamente! ⏳' 
+    // Tratamento de chave inválida ou revogada no Google AI Studio
+    if (error.message && (error.message.includes('API key not valid') || error.status === 400)) {
+      return res.status(400).json({ 
+        error: 'Sua chave de API do Gemini é inválida ou expirou. Por favor, atualize-a na página de Perfil.' 
       });
     }
 
-    // Intercepta o 503 (Servidor Lotado)
-    if (error.status === 503 || error.message.includes('503')) {
-      return res.status(503).json({ 
-        error: 'A Inteligência Artificial do Google está com muita demanda agora. Aguarde uns 10 segundos e clique em Gerar novamente! ⏳' 
+    if (error.status === 429 || error.message.includes('429')) {
+      return res.status(429).json({ 
+        error: 'Sua chave de API atingiu o limite de cota de requisições. Aguarde um minuto e tente novamente! ⏳' 
       });
     }
 
@@ -379,16 +389,35 @@ app.post('/api/auth/enable-mfa', requireAuth, async (req, res) => {
 });
 
 app.post('/api/auth/update-profile', requireAuth, async (req, res) => {
-  const { jiraToken, currentPassword } = req.body || {};
-  const user = await findUser('id', req.session.userId);
-  if (!currentPassword || !(await bcrypt.compare(currentPassword, user.passwordHash))) return res.status(401).json({ error: 'Senha incorreta.' });
+  try {
+    const { jiraToken, geminiToken, currentPassword } = req.body || {};
+    const user = await findUser('id', req.session.userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
 
-  const updates = {};
-  if (jiraToken) updates.jiraTokenEncrypted = encryptToken(jiraToken);
-  await updateUser(user.id, updates);
-  
-  req.session.loginTime = Date.now();
-  res.json({ success: true, message: 'Perfil atualizado.' });
+    if (!currentPassword || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      return res.status(401).json({ error: 'Senha incorreta.' });
+    }
+
+    const updates = {};
+    if (jiraToken) updates.jiraTokenEncrypted = encryptToken(jiraToken);
+    if (geminiToken) updates.geminiKeyEncrypted = encryptToken(geminiToken);
+
+    // Se nenhum token foi enviado
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Informe ao menos um novo token para atualizar.' });
+    }
+
+    await updateUser(user.id, updates);
+    
+    req.session.loginTime = Date.now();
+    return res.json({ success: true, message: 'Credenciais atualizadas com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao atualizar perfil no servidor:', error);
+    return res.status(500).json({ error: 'Falha interna ao salvar credenciais no banco de dados. Verifique a coluna no banco.' });
+  }
 });
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
@@ -554,4 +583,25 @@ app.post('/api/jira', requireAuth, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Jira Tool V2 rodando em http://localhost:${PORT}`);
   console.log('Autenticação: Postgres (Supabase) + Sessão Nativa');
+});
+
+// POST /api/auth/update-gemini-key -> Salva ou limpa a chave pessoal de IA do QA
+app.post('/api/auth/update-gemini-key', requireAuth, async (req, res) => {
+  const { geminiToken } = req.body || {};
+  const user = await findUser('id', req.session.userId);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
+
+  // Se enviado um token, criptografa com a função nativa existente no server.js
+  const updates = {
+    geminiKeyEncrypted: geminiToken ? encryptToken(String(geminiToken).trim()) : ''
+  };
+
+  await updateUser(user.id, updates);
+  req.session.loginTime = Date.now();
+
+  res.json({ 
+    success: true, 
+    hasCustomKey: Boolean(updates.geminiKeyEncrypted),
+    message: updates.geminiKeyEncrypted ? 'Chave do Gemini salva e criptografada com sucesso!' : 'Chave pessoal removida. Usando chave padrão.' 
+  });
 });
