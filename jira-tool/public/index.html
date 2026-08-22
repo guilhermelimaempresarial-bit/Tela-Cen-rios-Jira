@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ferramenta de Cenários do Jira - Automação de QA</title>
+
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
   
   <!-- CSS Modularizado e Universal -->
   <link rel="stylesheet" href="style.css" />
@@ -48,6 +51,8 @@
 <!-- ABA 1: CRIAR CENÁRIOS (v2) -->
 <div id="tab-criar" class="tab-content active">
   <div class="card">
+    
+    <!-- 💡 ROW DOS INPUTS SUPERIORES (FECHAMENTO CORRIGIDO) -->
     <div class="row">
       <div>
         <label for="parentKey">Issue Pai (História)</label>
@@ -57,7 +62,6 @@
         <label for="issueType">Tipo de Issue</label>
         <input type="text" id="issueType" value="Subtask de teste">
       </div>
-      <!-- 💡 CORREÇÃO: Esta div estava faltando e quebrava o Flexbox! -->
       <div>
         <label for="statusFinalAlvo">Status Final</label>
         <select id="statusFinalAlvo">
@@ -70,9 +74,12 @@
           <option value="aprovado">Aprovado</option>
         </select>
       </div>
-       <!-- CAMPO CUSTOMIZADO: Categorias (Select2 Style Vanilla) -->
+      <!-- CAMPO CUSTOMIZADO: Categorias -->
       <div>
-        <label>Categorias</label>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+          <label style="margin-bottom: 0;">Categorias</label>
+          <span style="font-size: 0.75rem; cursor: pointer; color: var(--accent); text-decoration: underline;" onclick="limparCategorias()">Limpar todas</span>
+        </div>
         <div class="custom-multiselect" id="categoryMultiSelect">
           <div class="multiselect-tags" id="categoryTags">
             <input type="text" id="categorySearch" class="multiselect-search" placeholder="Buscar categoria..." autocomplete="off">
@@ -83,16 +90,16 @@
         </div>
         <p class="hint">Clique para buscar ou selecione as categorias desejadas.</p>
       </div>
-    </div>
+    </div> <!-- FECHAMENTO CORRETO DA .row -->
 
+    <!-- CONFIGURAÇÃO DE SEÇÕES -->
     <div class="card" id="sectionConfigCard" style="margin-top:1rem; margin-bottom:0; background: var(--surface-2);">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
         <label style="margin-top:0; margin-bottom:0;">Configurar nomes das seções dos cenários</label>
         <button class="secondary small" id="toggleSectionConfig" type="button" onclick="toggleSectionConfig()">Mostrar</button>
       </div>
       <div id="sectionConfigBody" style="display:none;">
-       <div class="row">
-          <!-- Pré-condição -->
+        <div class="row">
           <div>
             <label for="sectionLabelPre">Pré-condição</label>
             <div style="display:flex; gap:0.5rem;">
@@ -107,7 +114,6 @@
               </select>
             </div>
           </div>
-          <!-- Ação -->
           <div>
             <label for="sectionLabelAcao">Ação</label>
             <div style="display:flex; gap:0.5rem;">
@@ -122,7 +128,6 @@
               </select>
             </div>
           </div>
-          <!-- Resultado Esperado -->
           <div>
             <label for="sectionLabelResultado">Resultado Esperado</label>
             <div style="display:flex; gap:0.5rem;">
@@ -155,29 +160,48 @@
     </div>
 
     <!-- MODO TEXTO LIVRE -->
-    <div id="modeTexto" style="margin-top: 1rem;">
+    <div id="modeTexto" style="display: flex; flex-direction: column; gap: 2.5rem; margin-top: 1.5rem;">
+
+   <!-- MODO TEXTO LIVRE -->
+    <div id="modeTexto" style="display: flex; flex-direction: column; gap: 2.5rem; margin-top: 1.5rem;">
+      
+      <!-- ✨ ASSISTENTE DE IA MOVIDO PARA O TOPO -->
+      <div style="background: var(--surface-2); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 4px 12px var(--shadow);">
+        <label style="margin-top: 0; font-size: 1rem;">✨ Assistente de IA Generativa</label>
+        
+        <div class="ai-input-wrapper" style="margin-top: 1rem;">
+          <textarea id="aiPrompt" oninput="autoResizeIA(this)" placeholder="Ex: Crie 3 cenários... (Dica: Dê Ctrl+V ou arraste uma Imagem/PDF aqui)"></textarea>
+          <button class="small" id="btnIA" onclick="gerarCenariosIA()">Gerar com IA ✨</button>
+        </div>
+
+        <!-- Container oculto que vai mostrar a miniatura do arquivo -->
+        <div id="aiImagePreviewContainer" style="display: none; margin-top: 1rem; position: relative; width: max-content;">
+          <!-- Para Imagens -->
+          <img id="aiImagePreview" src="" alt="Preview" style="display: none; max-height: 80px; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px var(--shadow);">
+          <!-- Para PDFs -->
+          <div id="aiPdfPreview" style="display: none; padding: 0.5rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; color: #0052cc; font-weight: 600;">
+            📄 PDF Anexado
+          </div>
+          <button class="del-btn" onclick="removeIAImage()" style="position: absolute; top: -8px; right: -8px; padding: 2px 6px; font-size: 12px; border-radius: 50%; cursor: pointer;" title="Remover anexo">✖</button>
+        </div>
+      </div>
+
       <div class="split" id="editorSplit">
-        <div>
+        <!-- COLUNA ESQUERDA: TEXTO / JSON (Oculta por padrão) -->
+        <div id="colInput" style="display: none;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <label for="cenarios" style="margin-top:0;">Cenários (texto livre / Gherkin / JSON)</label>
-            <button class="secondary small" id="btnExpandir" onclick="toggleEditorFull()" title="Expandir/recolher o editor">⛶ Expandir editor</button>
+            <button class="secondary small" onclick="toggleFullscreen('colInput', this)" title="Expandir/recolher o editor de texto">⛶ Expandir editor</button>
           </div>
+
           <textarea id="cenarios" oninput="onTextInput()" placeholder="CT-01: Filtro avançado exibido na tela
 Pré-condição:
 Usuário logado no Certifica+, tela de Minhas Conexões acessada.
 Ação:
 Abrir os filtros avançados
-Verificar opções do filtro
 Resultado Esperado:
-Filtro disponível entre os filtros avançados
-Exibe 4 opções
-
---- ou em Gherkin ---
-
-Cenário: Filtrar por ALTO
-Dado que existem conexões com diferentes valores
-Quando eu seleciono ALTO e aplico
-Então a lista exibe somente Potencial ALTO"></textarea>
+Exibe 4 opções"></textarea>
+          
           <div class="format-help">
             <strong>Formatos aceitos (bem flexíveis):</strong><br>
             • Título opcional: <code>CT-01:</code>, <code>Cenário:</code>, <code>1.</code> ou nada (gera <code>CT-01</code> automático).<br>
@@ -186,22 +210,27 @@ Então a lista exibe somente Potencial ALTO"></textarea>
             • Pode colar um <code>JSON</code> (array de cenários) diretamente.
           </div>
         </div>
-        <div class="col-preview">
+
+        <!-- COLUNA DIREITA: PRÉ-VISUALIZAÇÃO (Toma 100% da largura automaticamente) -->
+        <div id="colPreview" class="col-preview">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
             <label style="margin-top:0;">Pré-visualização</label>
             <div class="toolbar" style="margin-top:0;">
+              <!-- 💡 NOVO BOTÃO: Alterna o editor de texto livre -->
+              <button class="secondary small" id="btnToggleInput" onclick="toggleInputEditor()" title="Mostrar ou ocultar o campo de texto livre">📝 Mostrar Editor de Texto</button>
+              <button class="secondary small" onclick="toggleFullscreen('colPreview', this)" title="Expandir/recolher a pré-visualização">⛶ Expandir editor</button>
               <button class="secondary small" onclick="preview()">🔍 Pré-visualizar</button>
               <button class="secondary small" onclick="toggleJsonView()">{ } Ver JSON</button>
               <button class="secondary small" onclick="copyJson()">📋 Copiar JSON</button>
             </div>
           </div>
+          
           <div id="previewBox" class="preview-box">
-            <div class="preview-empty">Digite os cenários e clique em <strong>Pré-visualizar</strong> para ver como serão convertidos.</div>
+            <div class="preview-empty">Digite os cenários ou use a IA acima para ver como serão convertidos.</div>
           </div>
           <div id="summaryBar" class="summary-bar"></div>
         </div>
       </div>
-    </div>
 
     <!-- MODO FORMULÁRIO ESTRUTURADO -->
     <div id="modeForm" style="margin-top: 1rem; display:none;">
@@ -211,6 +240,8 @@ Então a lista exibe somente Potencial ALTO"></textarea>
 
     <button id="btnCriar" onclick="criar()">Criar Cenários</button>
   </div>
+</div>
+</div>
 </div>
 
 <!-- ABA 2: MOVER CENÁRIOS -->

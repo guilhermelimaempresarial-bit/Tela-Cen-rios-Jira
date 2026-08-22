@@ -107,8 +107,12 @@
           img.src = qrCode; 
           img.style.display = 'inline-block';
         }
+        // 💡 UX SÊNIOR: Foca no campo de configuração de MFA (Atraso de 50ms para garantir a renderização do HTML)
+        setTimeout(() => document.getElementById('mfaSetupCode').focus(), 50);
       } else {
         document.getElementById('mfaSection').style.display = 'block';
+        // 💡 UX SÊNIOR: Foca automaticamente no campo do código no dia a dia
+        setTimeout(() => document.getElementById('mfaLoginCode').focus(), 50);
       }
     }
 
@@ -152,7 +156,7 @@
           // Cenário A: MFA já configurado, mas o usuário ainda não digitou o código.
           // Aqui nós mostramos a mensagem como 'info' em vez de erro, se o usuário NÃO tiver enviado o código na tentativa.
           if (result.requiresMfa) { 
-            document.getElementById('mfaSection').style.display = 'block'; 
+            handleMfaRequired();
             
             // Se o usuário já tentou enviar um mfaCode mas o backend retornou requerimento (significa que errou)
             if(payload.mfaCode) {

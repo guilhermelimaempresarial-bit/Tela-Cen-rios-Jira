@@ -111,9 +111,31 @@ button.small { padding: 0.4rem 0.9rem; font-size: 0.8rem; margin-top: 0; }
 .split { display: flex; gap: 1.25rem; align-items: flex-start; }
 .split > div { flex: 1; min-width: 0; }
 .preview-box { margin-top: 0.3rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); padding: 1rem; height: 62vh; min-height: 340px; overflow-y: auto; }
-.split.editor-full { display: block; }
-.split.editor-full .col-preview { display: none; }
-.split.editor-full #cenarios { height: 72vh; }
+/* ===== MODO TELA CHEIA (FULLSCREEN) ===== */
+.editor-fullscreen {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999;
+  background: var(--bg);
+  padding: 2rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* Ajusta a altura interna da caixa de texto e do preview quando expandidos */
+.editor-fullscreen textarea#cenarios,
+.editor-fullscreen .preview-box {
+  height: calc(100vh - 120px) !important;
+  min-height: auto;
+}
+
+/* Trava a rolagem da página atrás do modal */
+body.has-fullscreen {
+  overflow: hidden;
+}
 
 @media (max-width: 860px) {
   body { padding: 0 1rem; margin: 1rem auto; }
@@ -316,4 +338,157 @@ table td {
 @keyframes fadeIn {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* ===== EDITOR WYSIWYG NOS CARDS DE PREVIEW ===== */
+.edit-summary {
+  font-size: 0.95rem;
+  font-weight: bold;
+  color: var(--text-strong);
+  border: 1px dashed transparent;
+  background: transparent;
+  padding: 4px;
+  width: 100%;
+  border-radius: 4px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.edit-area {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  border: 1px dashed transparent;
+  background: transparent;
+  padding: 4px;
+  border-radius: 4px;
+  resize: none; /* Altura controlada pelo JS */
+  overflow: hidden;
+  line-height: 1.5;
+  transition: border-color 0.2s, background 0.2s;
+  margin-top: 2px;
+}
+
+.edit-summary:hover, .edit-summary:focus,
+.edit-area:hover, .edit-area:focus {
+  border-color: var(--accent);
+  background: var(--surface-2);
+  outline: none;
+}
+
+/* ===== EDITOR WYSIWYG (QUILL) NOS CARDS DE PREVIEW ===== */
+.ql-container-wrapper {
+  position: relative;
+  margin-top: 0.5rem;
+}
+
+/* Customização para camuflar a barra de ferramentas do Quill */
+.ql-toolbar.ql-snow {
+  border: 1px solid var(--border-input);
+  background: var(--surface-2);
+  border-radius: 4px 4px 0 0;
+  display: none; /* 💡 LÓGICA DE UX: Esconde por padrão para não poluir a tela */
+  border-bottom: none;
+}
+
+.ql-container-wrapper:focus-within .ql-toolbar.ql-snow {
+  display: block; /* Revela quando o QA clica para editar */
+}
+
+.ql-container.ql-snow {
+  border: 1px dashed var(--border-input);
+  font-family: inherit;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  background: var(--bg);
+  min-height: 40px;
+}
+
+.ql-container-wrapper:focus-within .ql-container.ql-snow {
+  border: 1px solid var(--accent);
+  border-radius: 0 0 4px 4px;
+  background: var(--surface);
+}
+
+.ql-editor { padding: 8px 12px; }
+.ql-editor p { margin-bottom: 0.3rem; }
+/* ===== TEXTAREA ELÁSTICO DA IA ===== */
+#aiPrompt {
+  height: 40px; /* 💡 NOVO: Sobrescreve o height global de 260px para nascer pequeno */
+  min-height: 40px; /* Altura inicial parecida com a de um input normal */
+  max-height: 100px; /* Limite de crescimento (aprox. 3 a 4 linhas) */
+  resize: none; /* QA não pode redimensionar na mão puxando a ponta */
+  overflow-y: hidden; /* Esconde a barra de rolagem inicialmente */
+  line-height: 1.5;
+  margin-top: 0;
+  padding: 0.6rem;
+}
+
+/* Garante que o botão fique no topo se o textarea crescer */
+.ai-input-wrapper {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  align-items: flex-start;
+}
+
+.ai-input-wrapper button {
+  height: 40px; /* Trava a altura do botão para não esticar */
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+/* ===== BOTÃO DE EXCLUIR CENÁRIO ===== */
+.btn-delete-scn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-delete-scn:hover {
+  background: #ffebe6;
+  color: #bf2600; /* Vermelho alerta do Jira */
+}
+
+/* ===== BADGES DE CATEGORIA INDIVIDUAIS NO CARD ===== */
+.scn-categories {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.scn-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-3);
+  color: var(--text-label);
+  border: 1px solid var(--border-input);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.scn-cat-remove {
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+  margin-left: 2px;
+}
+
+.scn-cat-remove:hover {
+  color: #bf2600; /* Vermelho alerta do Jira */
 }

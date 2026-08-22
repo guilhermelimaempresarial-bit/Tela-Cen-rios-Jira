@@ -367,12 +367,18 @@ function onTextInput() {
   if (box && box.dataset.dirty !== '1') box.dataset.dirty = '1';
 }
 
-function toggleEditorFull() {
-  const split = document.getElementById('editorSplit');
-  const btn = document.getElementById('btnExpandir');
-  if (!split || !btn) return;
-  const full = split.classList.toggle('editor-full');
-  btn.textContent = full ? '🗗 Recolher editor' : '⛶ Expandir editor';
+// 💡 LÓGICA SÊNIOR: Função universal de expansão de blocos
+function toggleFullscreen(targetId, btnEl) {
+  const container = document.getElementById(targetId);
+  if (!container || !btnEl) return;
+  
+  const isFull = container.classList.toggle('editor-fullscreen');
+  
+  // Aplica classe no body para travar a barra de rolagem de fundo
+  document.body.classList.toggle('has-fullscreen', isFull);
+  
+  // Atualiza o texto e o ícone do botão dinamicamente
+  btnEl.innerHTML = isFull ? '✖ Recolher editor' : '⛶ Expandir editor';
 }
 
 function preview() {
@@ -381,6 +387,7 @@ function preview() {
   renderPreview(res);
 }
 
+// ===== RENDERIZAÇÃO COM EDITOR RICO (QUILL) =====
 function renderPreview(res) {
   const box = document.getElementById('previewBox');
   const bar = document.getElementById('summaryBar');
@@ -403,17 +410,209 @@ function renderPreview(res) {
     return;
   }
 
-  box.innerHTML = cenarios.map(c => {
+  box.innerHTML = cenarios.map((c, idx) => {
     const warns = (c._warnings || []).length ? `<span class="warn-badge">⚠ ${c._warnings.join(', ')}</span>` : '';
-    const actionList = c.action.length ? `<ul>${c.action.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>` : '<em style="color:#7a869a">—</em>';
-    const expList = c.expected.length ? `<ul>${c.expected.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : '<em style="color:#7a869a">—</em>';
-    return `<div class="scn-card">
-      <h4>${escapeHtml(c.summary)} ${warns}</h4>
-      <div class="sec"><strong>${escapeHtml(labels.pre)}:</strong> ${c.precondition ? escapeHtml(c.precondition) : '<em style="color:#7a869a">—</em>'}</div>
-      <div class="sec"><strong>${escapeHtml(labels.acao)}:</strong> ${actionList}</div>
-      <div class="sec"><strong>${escapeHtml(labels.resultado)}:</strong> ${expList}</div>
+    
+    // 💡 UX & ARQUITETURA: Garante que cada cenário herde as categorias globais se ainda não tiver as suas
+    if (!c.categories) {
+      c.categories = [...selectedCategoriesList];
+    }
+
+    c.preconditionHtml = c.preconditionHtml || (c.precondition ? c.precondition.split('\n').map(p => `<p>${escapeHtml(p)}</p>`).join('') : '<p></p>');
+    c.actionHtml = c.actionHtml || (c.action && c.action.length ? `<ol>${c.action.map(a => `<li>${escapeHtml(limparBullet(a))}</li>`).join('')}</ol>` : '<ol><li><br></li></ol>');
+    c.expectedHtml = c.expectedHtml || (c.expected && c.expected.length ? `<ul>${c.expected.map(e => `<li>${escapeHtml(limparBullet(e))}</li>`).join('')}</ul>` : '<ul><li><br></li></ul>');
+
+    return `<div class="scn-card" data-idx="${idx}">
+      <!-- Cabeçalho reestruturado com as categorias à esquerda da lixeira -->
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:0.4rem; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:0.5rem; flex: 1; min-width: 200px;">
+          <input type="text" class="edit-summary" value="${escapeHtml(c.summary)}" oninput="updateCenarioSimples(${idx}, 'summary', this.value)">
+          ${warns}
+        </div>
+        
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <!-- 🏷️ Pílulas de Categoria Locais -->
+          <div class="scn-categories">
+            ${(c.categories || []).map(cat => `
+              <span class="scn-cat-badge">
+                ${escapeHtml(cat)}
+                <span class="scn-cat-remove" onclick="removerCategoriaCenario(${idx}, '${escapeHtml(cat)}')" title="Remover '${escapeHtml(cat)}' apenas deste cenário">✕</span>
+              </span>
+            `).join('')}
+          </div>
+
+          <!-- 🗑️ Lixeira de exclusão do cenário -->
+          <button class="btn-delete-scn" onclick="removerCenario(${idx})" title="Excluir este cenário">🗑️</button>
+        </div>
+      </div>
+      
+      <div class="sec ql-container-wrapper">
+        <strong>${escapeHtml(labels.pre)}:</strong>
+        <div class="quill-editor" data-idx="${idx}" data-field="preconditionHtml">${c.preconditionHtml}</div>
+      </div>
+      <div class="sec ql-container-wrapper">
+        <strong>${escapeHtml(labels.acao)}:</strong>
+        <div class="quill-editor" data-idx="${idx}" data-field="actionHtml">${c.actionHtml}</div>
+      </div>
+      <div class="sec ql-container-wrapper">
+        <strong>${escapeHtml(labels.resultado)}:</strong>
+        <div class="quill-editor" data-idx="${idx}" data-field="expectedHtml">${c.expectedHtml}</div>
+      </div>
     </div>`;
   }).join('');
+
+  setTimeout(() => document.querySelectorAll('.edit-area').forEach(autoResize), 0);
+
+  // INICIALIZAÇÃO DO QUILL (com a mágica da propagação)
+  const toolbarOptions = [
+    ['bold', 'italic', 'underline'],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    ['code-block', 'clean']
+  ];
+
+  document.querySelectorAll('.quill-editor').forEach(el => {
+    const quill = new Quill(el, { theme: 'snow', modules: { toolbar: toolbarOptions } });
+    
+    const idx = parseInt(el.getAttribute('data-idx'), 10);
+    const field = el.getAttribute('data-field');
+    
+    // 💡 Salva o HTML perfeito IMEDIATAMENTE na memória (Garante que o Jira receba o estilo)
+    ultimoParse.cenarios[idx][field] = quill.root.innerHTML;
+    
+    quill.on('text-change', () => {
+      const htmlContent = quill.root.innerHTML;
+      ultimoParse.cenarios[idx][field] = htmlContent;
+      propagarFormatacaoRica(idx, field, htmlContent); // Dispara a Mágica visual!
+    });
+  });
+}
+
+function updateCenarioSimples(idx, campo, valor) {
+  ultimoParse.cenarios[idx][campo] = valor;
+}
+
+// 💡 UX & DADOS: Reordena os prefixos CT-XX de todos os cenários restantes
+function reordenarTitulosCT(cenarios) {
+  cenarios.forEach((c, index) => {
+    const autoIdx = index + 1;
+    const prefixoNovo = `CT-${String(autoIdx).padStart(2, '0')}`;
+    
+    // Expressão Regular: Captura e remove prefixos antigos como "CT-04:", "CT 04 -", "CT04:"
+    const tituloLimpo = (c.summary || '')
+      .replace(/^CT[-\s]?\d+\s*[:\-]?\s*/i, '')
+      .trim();
+
+    // Reconstrói o título com a numeração sequencial correta
+    c.summary = tituloLimpo ? `${prefixoNovo}: ${tituloLimpo}` : prefixoNovo;
+  });
+}
+
+// 💡 UX: Exclui o cenário e dispara o recálculo imediato dos títulos
+function removerCenario(idx) {
+  if (confirm('Tem certeza que deseja excluir este cenário?')) {
+    ultimoParse.cenarios.splice(idx, 1); // Remove o cenário selecionado
+    reordenarTitulosCT(ultimoParse.cenarios); // Recalcula a sequência CT-01, CT-02...
+    renderPreview(ultimoParse); // Atualiza os inputs e o Quill na tela
+  }
+}
+
+// 💡 UX: Remove uma categoria especificamente do cenário selecionado sem afetar os outros
+function removerCategoriaCenario(scnIdx, catNome) {
+  if (!ultimoParse.cenarios[scnIdx]) return;
+  
+  // Filtra apenas o array do cenário específico
+  ultimoParse.cenarios[scnIdx].categories = (ultimoParse.cenarios[scnIdx].categories || []).filter(c => c !== catNome);
+  
+  // Re-renderiza a pré-visualização mantendo as edições
+  renderPreview(ultimoParse);
+}
+
+// 💡 UX: Atalho para esvaziar todas as categorias globais com 1 clique
+function limparCategorias() {
+  selectedCategoriesList = []; // Zera a memória de categorias
+  renderMultiSelectTags(); // Remove as tags da interface
+  renderMultiSelectDropdown(); // Restaura as opções na lista
+}
+
+// 💡 EXTRATOR SÊNIOR: Pega o texto limpo do HTML sem perder a edição do QA!
+function extrairLinhasLimpasDoHtml(html) {
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  const linhas = [];
+  temp.childNodes.forEach(node => {
+    if (node.nodeName === 'UL' || node.nodeName === 'OL') {
+       node.childNodes.forEach(li => { if (li.nodeName === 'LI') linhas.push(li.textContent); });
+    } else if (node.nodeName === 'P' || node.nodeName === 'DIV') {
+       linhas.push(node.textContent);
+    } else if (node.nodeType === 3 && node.textContent.trim()) {
+       linhas.push(node.textContent);
+    }
+  });
+  return linhas.map(l => limparBullet(l)).filter(Boolean);
+}
+
+// 💡 A MÁGICA: Lê o estilo do cenário 0 e replica para os outros formatando em HTML
+function propagarFormatacaoRica(origemIdx, campo, htmlOrigem) {
+  if (origemIdx !== 0) return; // Só propaga se o usuário estiver editando o Cenário 1 (o Líder)
+
+  let tipoListaNativa = null;
+  if (htmlOrigem.includes('<ol>')) tipoListaNativa = 'ol';
+  else if (htmlOrigem.includes('<ul>')) tipoListaNativa = 'ul';
+
+  const temp = document.createElement('div');
+  temp.innerHTML = htmlOrigem;
+  const primeiraLinha = (temp.innerText || temp.textContent || '').trim();
+  
+  let estiloManual = null;
+  const matchNum = primeiraLinha.match(/^(\d+)([\.\)])\s+/);
+  if (matchNum) estiloManual = { tipo: 'numerico', separador: matchNum[2] + ' ' };
+  
+  const matchSimb = primeiraLinha.match(/^([\-\*\•\+])\s+/);
+  if (matchSimb && !estiloManual) estiloManual = { tipo: 'simbolo', simbolo: matchSimb[1] + ' ' };
+
+  // 🚨 ARQUITETURA CORRIGIDA: Removemos o bloqueio (return) que ficava aqui!
+  // Agora, se não houver estilo, ele prossegue para limpar os outros cenários.
+
+  const cenarios = ultimoParse.cenarios;
+  
+  for (let i = 1; i < cenarios.length; i++) {
+    let htmlAlvo = cenarios[i][campo] || '';
+    if (!htmlAlvo) continue;
+
+    const linhasLimpas = extrairLinhasLimpasDoHtml(htmlAlvo);
+    if (linhasLimpas.length === 0) continue;
+
+    let htmlNovo = '';
+
+    if (tipoListaNativa === 'ul') {
+      htmlNovo = `<ul>${linhasLimpas.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`;
+    } else if (tipoListaNativa === 'ol') {
+      htmlNovo = `<ol>${linhasLimpas.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ol>`;
+    } else if (estiloManual) {
+      htmlNovo = linhasLimpas.map((l, idx) => {
+        const prefixo = estiloManual.tipo === 'numerico' ? `${idx + 1}${estiloManual.separador}` : estiloManual.simbolo;
+        return `<p>${escapeHtml(prefixo + l)}</p>`;
+      }).join('');
+    } else {
+      // 💡 O PULO DO GATO: Se o QA apagou os marcadores no Cenário 1, nós propagamos essa remoção!
+      // Convertendo todos os itens de volta para parágrafos puros (<p>)
+      htmlNovo = linhasLimpas.map(l => `<p>${escapeHtml(l)}</p>`).join('');
+    }
+
+    if (htmlNovo && htmlNovo !== htmlAlvo) {
+      cenarios[i][campo] = htmlNovo;
+      const container = document.querySelector(`.quill-editor[data-idx="${i}"][data-field="${campo}"]`);
+      if (container) {
+         const ed = container.querySelector('.ql-editor');
+         if (ed) ed.innerHTML = htmlNovo;
+      }
+    }
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight) + 'px';
 }
 
 function renderJson(cenarios) {
@@ -500,58 +699,78 @@ function coletarFormScenarios() {
   return cenarios;
 }
 
+// ===== CONVERSOR SÊNIOR: HTML (Quill) -> ADF (Jira API) =====
+function convertHtmlToAdfBlocks(htmlString) {
+  if (!htmlString || htmlString.trim() === '') return [{ type: 'paragraph', content: [] }];
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlString, 'text/html');
+  const blocks = [];
+
+  function parseInlineNodes(node, activeMarks = []) {
+    let content = [];
+    node.childNodes.forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        if (child.textContent) content.push({ type: 'text', text: child.textContent, marks: activeMarks.length ? [...activeMarks] : undefined });
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const tag = child.tagName.toLowerCase();
+        let newMarks = [...activeMarks];
+        if (tag === 'strong' || tag === 'b') newMarks.push({ type: 'strong' });
+        if (tag === 'em' || tag === 'i') newMarks.push({ type: 'em' });
+        if (tag === 'u') newMarks.push({ type: 'underline' });
+        if (tag !== 'br') content = content.concat(parseInlineNodes(child, newMarks));
+      }
+    });
+    return content;
+  }
+
+  doc.body.childNodes.forEach(node => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName.toLowerCase();
+
+    if (tag === 'p') {
+      const content = parseInlineNodes(node);
+      blocks.push({ type: 'paragraph', content: content.length ? content : [] });
+    } else if (tag === 'ul' || tag === 'ol') {
+      const listType = tag === 'ul' ? 'bulletList' : 'orderedList';
+      const listItems = [];
+      node.childNodes.forEach(li => {
+        if (li.nodeType === Node.ELEMENT_NODE && li.tagName.toLowerCase() === 'li') {
+          const liContent = parseInlineNodes(li);
+          listItems.push({ type: 'listItem', content: [{ type: 'paragraph', content: liContent.length ? liContent : [] }] });
+        }
+      });
+      if (listItems.length > 0) blocks.push({ type: listType, content: listItems });
+    } else if (tag === 'pre') {
+      blocks.push({ type: 'codeBlock', attrs: { language: 'text' }, content: [{ type: 'text', text: node.textContent || '' }] });
+    }
+  });
+
+  return blocks.length ? blocks : [{ type: 'paragraph', content: [] }];
+}
+
 function buildDescription(c) {
   const labels = getConfiguredSectionLabels();
-  // 💡 CORREÇÃO: Chama a função recuperada acima para aplicar a cor do painel selecionada pelo usuário
   const colors = getConfiguredSectionColors();
-    
   const content = [];
 
   const buildSection = (labelText, colorType, innerContentBlocks) => {
-    const titleBlock = { 
-      type: 'paragraph', 
-      content: [{ type: 'text', text: labelText + ':', marks: [{ type: 'strong' }] }] 
-    };
-    
+    const titleBlock = { type: 'paragraph', content: [{ type: 'text', text: labelText + ':', marks: [{ type: 'strong' }] }] };
     if (colorType === 'none') {
       content.push(titleBlock, ...innerContentBlocks);
     } else {
-      content.push({
-        type: 'panel', 
-        attrs: { panelType: colorType },
-        content: [titleBlock, ...innerContentBlocks]
-      });
+      content.push({ type: 'panel', attrs: { panelType: colorType }, content: [titleBlock, ...innerContentBlocks] });
     }
   };
 
-  const preText = c.precondition || '—';
-  const preParagraphs = preText.split('\n').map(linha => ({
-    type: 'paragraph',
-    content: [{ type: 'text', text: linha }]
-  }));
-  buildSection(labels.pre, colors.pre, preParagraphs);
+  // 💡 Agora confiamos 100% no HTML capturado pelo Quill na tela!
+  const preHtml = c.preconditionHtml || '<p>—</p>';
+  const actionHtml = c.actionHtml || '<ol><li>—</li></ol>';
+  const expectedHtml = c.expectedHtml || '<ul><li>—</li></ul>';
 
-  buildSection(
-    labels.acao, 
-    colors.acao, 
-    [{ 
-      type: 'bulletList', 
-      content: (c.action.length ? c.action : ['—']).map(a => ({ 
-        type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: a }] }] 
-      })) 
-    }]
-  );
-
-  buildSection(
-    labels.resultado, 
-    colors.resultado, 
-    [{ 
-      type: 'bulletList', 
-      content: (c.expected.length ? c.expected : ['—']).map(e => ({ 
-        type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: e }] }] 
-      })) 
-    }]
-  );
+  buildSection(labels.pre, colors.pre, convertHtmlToAdfBlocks(preHtml));
+  buildSection(labels.acao, colors.acao, convertHtmlToAdfBlocks(actionHtml));
+  buildSection(labels.resultado, colors.resultado, convertHtmlToAdfBlocks(expectedHtml));
 
   return { version: 1, type: 'doc', content };
 }
@@ -612,6 +831,18 @@ function renderMultiSelectDropdown(filterText = '') {
     div.textContent = cat;
     div.onclick = () => {
       selectedCategoriesList.push(cat);
+      
+      // Sincroniza com os cenários ativos em memória
+      if (ultimoParse.cenarios && ultimoParse.cenarios.length > 0) {
+        ultimoParse.cenarios.forEach(c => {
+          c.categories = c.categories || [];
+          if (!c.categories.includes(cat)) {
+            c.categories.push(cat);
+          }
+        });
+        renderPreview(ultimoParse);
+      }
+
       document.getElementById('categorySearch').value = '';
       document.getElementById('categoryDropdown').style.display = 'none';
       renderMultiSelectTags();
@@ -627,14 +858,21 @@ function removeCategory(cat) {
   renderMultiSelectDropdown(document.getElementById('categorySearch')?.value || '');
 }
 
-// Escuta eventos de clique fora do componente e digitação
-document.addEventListener('DOMContentLoaded', () => {
+// ===== INICIALIZAÇÃO E EVENTOS DE UX (DOMContentLoaded) =====
+document.addEventListener('DOMContentLoaded', async () => {
+  applyThemeLabel();
+  
+  if (!window.location.pathname.includes('login.html')) {
+    await checkSession();
+  }
+
+  // 💡 RESTAURADO: Ouvintes de evento do Multi-Select de Categorias
   const searchInput = document.getElementById('categorySearch');
   const dropdown = document.getElementById('categoryDropdown');
   const multiselect = document.getElementById('categoryMultiSelect');
 
   if (searchInput && dropdown && multiselect) {
-    // Ao focar no input, abre a lista
+    // 1. Abre o menu suspenso ao focar no input (se já houver categorias carregadas do Jira)
     searchInput.addEventListener('focus', () => {
       if (allCategories.length > 0) {
         dropdown.style.display = 'block';
@@ -642,16 +880,52 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Ao digitar, filtra a lista em tempo real
+    // 2. Filtra as opções instantaneamente conforme o QA digita
     searchInput.addEventListener('input', (e) => {
       dropdown.style.display = 'block';
       renderMultiSelectDropdown(e.target.value);
     });
 
-    // Se clicar fora do componente inteiro, fecha a lista dropdown
+    // 3. Fecha a lista automaticamente ao clicar em qualquer lugar fora do componente
     document.addEventListener('click', (e) => {
       if (!multiselect.contains(e.target)) {
         dropdown.style.display = 'none';
+      }
+    });
+  }
+
+  // ===== EVENTOS DE UX: CTRL+V E DRAG & DROP NA IA =====
+  const aiPrompt = document.getElementById('aiPrompt');
+  if (aiPrompt) {
+    aiPrompt.addEventListener('paste', (e) => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (let item of items) {
+        if (item.kind === 'file') {
+          e.preventDefault(); 
+          processIAFile(item.getAsFile()); 
+          break; 
+        }
+      }
+    });
+
+    aiPrompt.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      aiPrompt.style.border = '2px dashed #0052cc';
+      aiPrompt.style.background = 'rgba(0, 82, 204, 0.05)';
+    });
+
+    aiPrompt.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      aiPrompt.style.border = '';
+      aiPrompt.style.background = '';
+    });
+
+    aiPrompt.addEventListener('drop', (e) => {
+      e.preventDefault();
+      aiPrompt.style.border = '';
+      aiPrompt.style.background = '';
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        processIAFile(e.dataTransfer.files[0]);
       }
     });
   }
@@ -691,8 +965,14 @@ async function criar() {
   const componentName = 'QA';
   const statusAlvoFinal = document.getElementById('statusFinalAlvo')?.value.trim() || '';
 
-  const res = coletarCenarios();
-  const cenarios = res.cenarios || [];
+  // 💡 ARQUITETURA SÊNIOR: Em vez de ler o texto bruto, pega os dados REAIS dos Editores Ricos!
+  let cenarios = ultimoParse.cenarios || [];
+  
+  // Trava de segurança: Se estiver vazio, tenta coletar
+  if (cenarios.length === 0) {
+    const res = coletarCenarios();
+    cenarios = res.cenarios || [];
+  }
 
   if (cenarios.length === 0) {
     addLog('❌ ERRO: Nenhum cenário encontrado.');
@@ -755,9 +1035,10 @@ async function criar() {
       description: buildDescription(c),
     };
 
-    // Aplicação das categorias selecionadas via Custom Multi-Select
-    if (selectedCategoriesList && selectedCategoriesList.length > 0) {
-      fields.labels = selectedCategoriesList; 
+    // 💡 Prioriza as categorias ajustadas individualmente no card
+    const labelsAplicaveis = (c.categories && c.categories.length >= 0) ? c.categories : selectedCategoriesList;
+    if (labelsAplicaveis && labelsAplicaveis.length > 0) {
+      fields.labels = labelsAplicaveis; 
     }
 
     return fields;
@@ -1353,13 +1634,6 @@ async function alterarV2() {
   if (btn) btn.disabled = false;
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-  applyThemeLabel();
-  
-  if (!window.location.pathname.includes('login.html')) {
-    await checkSession();
-  }
-});
 // ===== UX: CONTROLE DE INATIVIDADE POR SEGURANÇA =====
 const TEMPO_INATIVIDADE_MINUTOS = 15; // Altere o tempo limite aqui (em minutos)
 let timeoutSessao;
@@ -1394,4 +1668,135 @@ if (!window.location.pathname.includes('login.html')) {
 
   // Dá o "Start" no cronômetro assim que a página carrega
   resetarTemporizadorSessao();
+}
+// 💡 MÁGICA MULTIMODAL: Guarda o arquivo na memória
+let currentIAImage = null; 
+
+function processIAFile(file) {
+  if (!file) return;
+
+  const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+  if (!validTypes.includes(file.type)) {
+    addLog('❌ ERRO: Formato não suportado. Envie uma Imagem (PNG/JPG) ou PDF.');
+    return;
+  }
+
+  if (file.size > 4 * 1024 * 1024) {
+    addLog('❌ ERRO: Arquivo muito pesado. O limite é 4MB.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    const base64Data = dataUrl.split(',')[1]; 
+
+    currentIAImage = { data: base64Data, mimeType: file.type };
+
+    const imgPreview = document.getElementById('aiImagePreview');
+    const pdfPreview = document.getElementById('aiPdfPreview');
+    
+    if (file.type === 'application/pdf') {
+      imgPreview.style.display = 'none';
+      pdfPreview.style.display = 'block';
+      pdfPreview.textContent = `📄 ${file.name || 'Documento.pdf'}`;
+    } else {
+      pdfPreview.style.display = 'none';
+      imgPreview.style.display = 'block';
+      imgPreview.src = dataUrl;
+    }
+    
+    document.getElementById('aiImagePreviewContainer').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeIAImage() {
+  currentIAImage = null;
+  const container = document.getElementById('aiImagePreviewContainer');
+  if (container) container.style.display = 'none';
+}
+
+async function gerarCenariosIA() {
+  const promptInput = document.getElementById('aiPrompt');
+  const btn = document.getElementById('btnIA');
+  const boxCenarios = document.getElementById('cenarios');
+  
+  // Valida se o QA digitou texto ou anexou imagem
+  if (!promptInput.value.trim() && !currentIAImage) {
+    addLog('❌ ERRO: Digite um prompt ou anexe um arquivo para a IA.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Pensando...';
+  addLog('🪄 Solicitando cenários para a IA...');
+
+  try {
+    // 💡 MÁGICA: Empacota o texto e a imagem em Base64
+    const payload = { promptUser: promptInput.value };
+    if (currentIAImage) payload.image = currentIAImage;
+
+    const res = await fetch('/api/ai/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    boxCenarios.value = JSON.stringify(data.cenarios, null, 2);
+    addLog(`✅ IA gerou ${data.cenarios.length} cenário(s) com sucesso!`);
+    
+    preview(); 
+    
+    promptInput.value = ''; 
+    autoResizeIA(promptInput);
+    removeIAImage(); // Limpa o anexo da tela após sucesso
+
+  } catch (error) {
+    addLog(`❌ ERRO IA: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🪄 Gerar com IA';
+  }
+}
+
+// 💡 LÓGICA SÊNIOR: Faz o textarea crescer dinamicamente até o max-height
+// 💡 LÓGICA SÊNIOR: Faz o textarea crescer dinamicamente, mas crava no tamanho base se estiver vazio
+function autoResizeIA(el) {
+  // 1. Cláusula de Escape: Se estiver vazio, força a altura original exata do CSS
+  if (!el.value.trim()) {
+    el.style.height = '40px';
+    el.style.overflowY = 'hidden';
+    return;
+  }
+
+  // 2. Se tiver texto, reseta a altura e recalcula dinamicamente
+  el.style.height = 'auto'; 
+  
+  if (el.scrollHeight <= 100) {
+    el.style.height = el.scrollHeight + 'px';
+    el.style.overflowY = 'hidden';
+  } else {
+    el.style.height = '100px';
+    el.style.overflowY = 'auto';
+  }
+}
+
+// 💡 UX: Alterna a visibilidade do editor de texto e altera o rótulo do botão
+function toggleInputEditor() {
+  const colInput = document.getElementById('colInput');
+  const btn = document.getElementById('btnToggleInput');
+  if (!colInput || !btn) return;
+
+  const isHidden = window.getComputedStyle(colInput).display === 'none';
+  if (isHidden) {
+    colInput.style.display = 'block';
+    btn.innerHTML = '👁️ Ocultar Editor de Texto';
+  } else {
+    colInput.style.display = 'none';
+    btn.innerHTML = '📝 Mostrar Editor de Texto';
+  }
 }

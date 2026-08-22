@@ -1,3 +1,4 @@
+
 global.WebSocket = require('ws')
 require('dotenv').config();
 
@@ -263,6 +264,77 @@ app.post('/api/auth/validate-password', async (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => { res.json({ success: true }); });
+});
+// ==============================================================
+// 🤖 ROTA DA INTELIGÊNCIA ARTIFICIAL (GEMINI)
+// ==============================================================
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+app.post('/api/ai/generate', requireAuth, async (req, res) => {
+  // 1. Extrai o texto e a imagem (se houver) do body
+  const { promptUser, image } = req.body; 
+  if (!promptUser && !image) return res.status(400).json({ error: 'Prompt e imagem vazios' });
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+    const systemPrompt = `Você é um Analista de QA Sênior. 
+    O usuário pedirá para você criar cenários de teste baseados em uma funcionalidade, imagem ou documento.
+    Você DEVE retornar a resposta EXCLUSIVAMENTE em formato JSON, sendo um Array de objetos.
+    Não use formatação Markdown como \`\`\`json. Apenas o texto do array.
+    Estrutura obrigatória de cada objeto:
+    [
+      {
+        "summary": "CT-01: Título do Cenário",
+        "precondition": "Texto da pré-condição",
+        "action": ["Passo 1", "Passo 2"],
+        "expected": ["Resultado 1", "Resultado 2"]
+      }
+    ]`;
+
+    // 💡 ARQUITETURA MULTIMODAL: Monta as peças do quebra-cabeça
+    const contentParts = [
+      systemPrompt,
+      `Pedido do usuário: ${promptUser || 'Analise o arquivo anexado e gere cenários.'}`
+    ];
+
+    if (image && image.data && image.mimeType) {
+      contentParts.push({
+        inlineData: {
+          data: image.data,
+          mimeType: image.mimeType
+        }
+      });
+    }
+
+    // Passa o array de partes em vez de apenas texto
+    const result = await model.generateContent(contentParts);
+    const textoResposta = result.response.text();
+    
+    // Higieniza o retorno teimoso do Gemini
+    const cleanText = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const cenariosJson = JSON.parse(cleanText);
+    
+    res.json({ success: true, cenarios: cenariosJson });
+ } catch (error) {
+    console.error('Erro na IA:', error);
+    
+    // 💡 LÓGICA SÊNIOR DE UX: Intercepta o 429 (Limite de Cota)
+    if (error.status === 429 || error.message.includes('429')) {
+      return res.status(429).json({ 
+        error: 'Você atingiu o limite de uso gratuito da IA (muitas requisições seguidas). Aguarde um minuto e tente novamente! ⏳' 
+      });
+    }
+
+    // Intercepta o 503 (Servidor Lotado)
+    if (error.status === 503 || error.message.includes('503')) {
+      return res.status(503).json({ 
+        error: 'A Inteligência Artificial do Google está com muita demanda agora. Aguarde uns 10 segundos e clique em Gerar novamente! ⏳' 
+      });
+    }
+
+    res.status(500).json({ error: `Falha na IA: ${error.message}` });
+  }
 });
 
 // ==============================================================
