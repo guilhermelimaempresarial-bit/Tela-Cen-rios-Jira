@@ -1759,7 +1759,7 @@ async function gerarCenariosIA() {
     addLog(`❌ ERRO IA: ${error.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🪄 Gerar com IA';
+    btn.textContent = 'Gerar com IA ✨';
   }
 }
 
@@ -1784,7 +1784,7 @@ function autoResizeIA(el) {
     el.style.overflowY = 'auto';
   }
 }
-
+F
 // 💡 UX: Alterna a visibilidade do editor de texto e altera o rótulo do botão
 function toggleInputEditor() {
   const colInput = document.getElementById('colInput');
