@@ -266,36 +266,85 @@ app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => { res.json({ success: true }); });
 });
 // ==============================================================
-// 🤖 ROTA DA INTELIGÊNCIA ARTIFICIAL (GEMINI)
+// 🤖 ROTA DA INTELIGÊNCIA ARTIFICIAL (GEMINI E BASES .MD)
 // ==============================================================
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// GET /api/ai/knowledge-bases -> Busca as bases .md cadastradas pelo QA
+app.get('/api/ai/knowledge-bases', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('knowledge_bases')
+      .select('id, title, content, created_at')
+      .eq('user_id', req.session.userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json({ success: true, bases: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar bases de conhecimento.' });
+  }
+});
+
+// POST /api/ai/knowledge-bases -> Cadastra nova base de regras em .md
+app.post('/api/ai/knowledge-bases', requireAuth, async (req, res) => {
+  try {
+    const { title, content } = req.body || {};
+    if (!title || !content) return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+
+    const { data, error } = await supabase
+      .from('knowledge_bases')
+      .insert([{ user_id: req.session.userId, title: String(title).trim(), content: String(content).trim() }])
+      .select('id, title, content, created_at')
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, base: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao salvar arquivo .md no banco de dados.' });
+  }
+});
+
+// DELETE /api/ai/knowledge-bases/:id -> Exclui base .md do QA
+app.delete('/api/ai/knowledge-bases/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('knowledge_bases')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.session.userId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao remover base de conhecimento.' });
+  }
+});
+
+// POST /api/ai/generate -> Geração de Cenários com Modelo Dinâmico e .MD Context
 app.post('/api/ai/generate', requireAuth, async (req, res) => {
-  const { promptUser, image } = req.body; 
-  if (!promptUser && !image) return res.status(400).json({ error: 'Prompt e imagem vazios' });
+  const { promptUser, image, modelTarget, contextMarkdown } = req.body; 
+  if (!promptUser && !image && !contextMarkdown) {
+    return res.status(400).json({ error: 'Envie um prompt, anexo ou selecione uma base de regras .md.' });
+  }
 
   try {
-    // 1. Busca o usuário logado para recuperar a chave individual
     const user = await findUser('id', req.session.userId);
     const userCustomKey = user?.geminiKeyEncrypted ? decryptToken(user.geminiKeyEncrypted) : null;
 
-    // ⛔ TRAVA ABSOLUTA: Se não houver chave individual cadastrada, cancela a requisição
     if (!userCustomKey) {
       return res.status(400).json({ 
-        error: '⚠️ Você não possui uma chave de API do Gemini cadastrada. Acesse seu Perfil (⚙️ Perfil) no topo da tela e configure sua chave para utilizar a IA.' 
+        error: '⚠️ Você não possui uma chave de API do Gemini cadastrada. Acesse seu Perfil (⚙️ Perfil) no topo da tela e configure seu token.' 
       });
     }
 
-    // 2. Instancia o modelo exclusivamente com o token individual do QA
-    const userGenAI = new GoogleGenerativeAI(userCustomKey);
-    const model = userGenAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+    // 💡 Usa as versões oficiais da Google para evitar alucinações
+    const allowedModels = ['gemini-3.6-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+    const selectedModel = allowedModels.includes(modelTarget) ? modelTarget : 'gemini-3.6-flash';
 
-    const systemPrompt = `Você é um Analista de QA Sênior. 
-    O usuário pedirá para você criar cenários de teste baseados em uma funcionalidade, imagem ou documento.
-    Você DEVE retornar a resposta EXCLUSIVAMENTE em formato JSON, sendo um Array de objetos.
-    Não use formatação Markdown como \`\`\`json. Apenas o texto do array.
-    Estrutura obrigatória de cada objeto:
+    let baseSystemPrompt = `Você é um Analista de QA Sênior. 
+    Crie cenários de teste estruturados baseados no pedido do usuário, imagens/documentos e regras fornecidas.
+    Retorne a resposta EXCLUSIVAMENTE como um Array JSON de objetos no seguinte formato:
     [
       {
         "summary": "CT-01: Título do Cenário",
@@ -305,44 +354,57 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
       }
     ]`;
 
+    if (contextMarkdown && contextMarkdown.trim() !== '') {
+      baseSystemPrompt += `\n\n--- BASE DE CONHECIMENTO E REGRAS DO PROJETO (.MD) ---\n${contextMarkdown}\n-------------------------------------------------------`;
+    }
+
+    const userGenAI = new GoogleGenerativeAI(userCustomKey);
+    const model = userGenAI.getGenerativeModel({ 
+      model: selectedModel,
+      systemInstruction: baseSystemPrompt
+    });
+
     const contentParts = [
-      systemPrompt,
-      `Pedido do usuário: ${promptUser || 'Analise o arquivo anexado e gere cenários.'}`
+      `Pedido do usuário: ${promptUser || 'Analise o contexto fornecido e crie os cenários de teste.'}`
     ];
 
     if (image && image.data && image.mimeType) {
-      contentParts.push({
-        inlineData: {
-          data: image.data,
-          mimeType: image.mimeType
-        }
-      });
+      contentParts.push({ inlineData: { data: image.data, mimeType: image.mimeType } });
     }
 
     const result = await model.generateContent(contentParts);
-    const textoResposta = result.response.text();
+    let textoResposta = result.response.text();
+
+    // 💡 HIGIENIZAÇÃO SÊNIOR: Procura onde o JSON realmente começa, ignorando "Aqui estão os cenários..."
+    const firstBracket = textoResposta.indexOf('[');
+    const firstBrace = textoResposta.indexOf('{');
+    const startIdx = (firstBracket !== -1 && firstBrace !== -1) ? Math.min(firstBracket, firstBrace) : Math.max(firstBracket, firstBrace);
     
+    if (startIdx !== -1) {
+      textoResposta = textoResposta.substring(startIdx);
+    }
+
     const cleanText = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const cenariosJson = JSON.parse(cleanText);
+    let cenariosJson = JSON.parse(cleanText);
+
+    // 💡 HIGIENIZAÇÃO SÊNIOR: Se a IA teimou e enviou um Objeto { cenarios: [...] }, nós extraímos o Array à força!
+    if (cenariosJson && !Array.isArray(cenariosJson)) {
+      cenariosJson = cenariosJson.cenarios || cenariosJson.scenarios || cenariosJson.data || [cenariosJson];
+    }
     
+    // Garante que a saída final será SEMPRE um array
+    if (!Array.isArray(cenariosJson)) cenariosJson = [];
+
     res.json({ success: true, cenarios: cenariosJson });
 
   } catch (error) {
     console.error('Erro na IA:', error);
-    
-    // Tratamento de chave inválida ou revogada no Google AI Studio
     if (error.message && (error.message.includes('API key not valid') || error.status === 400)) {
-      return res.status(400).json({ 
-        error: 'Sua chave de API do Gemini é inválida ou expirou. Por favor, atualize-a na página de Perfil.' 
-      });
+      return res.status(400).json({ error: 'Chave de API do Gemini inválida. Atualize-a na tela de Perfil.' });
     }
-
     if (error.status === 429 || error.message.includes('429')) {
-      return res.status(429).json({ 
-        error: 'Sua chave de API atingiu o limite de cota de requisições. Aguarde um minuto e tente novamente! ⏳' 
-      });
+      return res.status(429).json({ error: 'Limite de cota de requisições atingido. Aguarde um minuto ou mude para o modelo Flash.' });
     }
-
     res.status(500).json({ error: `Falha na IA: ${error.message}` });
   }
 });

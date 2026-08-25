@@ -7,10 +7,7 @@
   <link rel="stylesheet" href="style.css" />
   <style>
     /* CSS específico do Profile */
-    body { min-height: 100vh; display: flex; flex-direction: column; }
-    .container { width: min(650px, 90vw); margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 24px; flex-wrap: wrap; }
-    .header-right { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    body { min-height: calc(100vh - 4rem); display: flex; flex-direction: column; }
     .back-link { padding: 0.5rem 1rem; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border-input); border-radius: 20px; text-decoration: none; font-weight: 600; font-size: 0.82rem; transition: background-color 0.2s; }
     .back-link:hover { background: var(--surface-3); }
     input[readonly] { background: var(--surface-2); cursor: not-allowed; color: var(--text-muted); }
@@ -21,6 +18,16 @@
     [data-theme="dark"] .success { background: #166534; color: #86efac; border: 1px solid #15803d; }
     .section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
     .section h2 { font-size: 1.1rem; margin-top: 0; color: var(--text-strong); }
+
+    /* Estilos do Modal (Pop-up) de Credenciais */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 9999; backdrop-filter: blur(2px); }
+    .modal-content { background: var(--surface); padding: 24px; border-radius: 8px; width: min(90vw, 450px); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3); border: 1px solid var(--border); animation: slideUp 0.2s ease-out; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .modal-header h3 { margin: 0; color: var(--text-strong); font-size: 1.2rem; }
+    .modal-close { background: transparent; color: var(--text-muted); border: none; font-size: 1.2rem; cursor: pointer; margin: 0; padding: 0; transition: color 0.2s; }
+    .modal-close:hover { color: #d32f2f; background: transparent; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
     /* Organização dos botões de ação */
     .action-group { display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1rem; }
@@ -33,79 +40,149 @@
   </script>
 </head>
 <body>
-  <div class="container" style="margin-top: 2rem;">
-    <div class="header">
-      <h1 style="font-size: 1.6rem; color: var(--text-strong); margin: 0;">⚙️ Meu Perfil</h1>
-      <div class="header-right"><a class="back-link" href="/">← Voltar ao Início</a></div>
+  <!-- CABEÇALHO PADRÃO DA FERRAMENTA -->
+  <header>
+    <div class="header-top">
+      <div>
+        <h1>⚙️ Meu Perfil</h1>
+        <p class="subtitle">Gerencie seus dados, credenciais de API e segurança da conta.</p>
+      </div>
+      <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <a class="theme-toggle" href="/" style="text-decoration:none;">← Voltar ao Início</a>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙 Tema escuro</button>
+      </div>
     </div>
+  </header>
+
+  <div id="loading" style="text-align: center; color: var(--text-muted); padding: 2rem;">Carregando seus dados...</div>
+
+  <!-- CONTEÚDO PRINCIPAL EXPANSIVO -->
+  <div id="content" style="display:none;"></div>
     
-    <div id="content" style="display:none;">
-      <!-- Dados do Usuário Organizados -->
+    <!-- 🪪 MÓDULO 1: DADOS DO USUÁRIO -->
+    <div class="card">
+      <h2 style="font-size: 1.2rem; margin-bottom: 1.5rem; color: var(--text-strong);">👤 Dados da Conta</h2>
+      
       <div class="row">
         <div>
-          <label>Nome</label>
+          <label style="margin-top: 0;">Nome</label>
           <input type="text" id="name" readonly />
           <p class="hint">Nome registrado na ferramenta</p>
         </div>
         <div>
-          <label>Email Jira</label>
+          <label style="margin-top: 0;">Email Jira</label>
           <input type="text" id="jiraEmail" readonly />
           <p class="hint">Email de integração com a API</p>
         </div>
       </div>
+      
       <div class="row" style="margin-top: 0.5rem;">
         <div>
-          <label>Username</label>
+          <label style="margin-top: 0;">Username</label>
           <input type="text" id="username" readonly />
           <p class="hint">Nome de usuário para login</p>
         </div>
         <div>
-          <label>Data de Cadastro</label>
+          <label style="margin-top: 0;">Data de Cadastro</label>
           <input type="text" id="createdAt" readonly />
           <p class="hint">Quando esta conta foi criada</p>
         </div>
       </div>
+    </div>
+    
 
-      <!-- Credenciais de Integração (Jira & Gemini) -->
-      <div class="section">
-        <h2>🔑 Credenciais de Integração</h2>
+    <!-- 🔐 MÓDULO 2: INTEGRAÇÕES E SEGURANÇA -->
+    <div class="card">
+      <h2 style="font-size: 1.2rem; margin-bottom: 1.5rem; color: var(--text-strong);">🔐 Segurança e Integrações</h2>
+      
+      <div class="row">
+        <div>
+          <label style="margin-top: 0;">APIs (Jira e Gemini)</label>
+          <button type="button" class="secondary" onclick="openCredModal()" style="width: 100%; text-align: left; margin-top: 0.3rem;">🔄 Alterar Credenciais...</button>
+          <p class="hint">Atualize seu token do Jira ou cadastre sua chave pessoal do Google Gemini.</p>
+        </div>
         
-        <label for="jiraToken">Novo Token Jira</label>
-        <input type="password" id="jiraToken" placeholder="Cole seu novo token da API do Jira" />
-        <p class="hint">Cole um novo token para substituir o anterior. Se deixado em branco, o atual será mantido.</p>
+        <div>
+          <label style="margin-top: 0;">Acesso à Ferramenta</label>
+          <button type="button" class="secondary" onclick="window.location.href='/change-password.html'" style="width: 100%; text-align: left; margin-top: 0.3rem;">🔑 Mudar Senha Pessoal</button>
+          <p class="hint">Atualize sua senha de login periodicamente.</p>
+        </div>
         
-        <label for="geminiToken">Nova Chave de API Gemini (IA)</label>
-        <input type="password" id="geminiToken" placeholder="Cole sua chave da API do Gemini (AIzaSy...)" />
-        <p class="hint">Obtenha sua chave gratuita no <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent); font-weight: 600;">Google AI Studio</a>. Deixe em branco para manter a atual.</p>
-
-        <label for="currentPassword">Senha Atual</label>
-        <input type="password" id="currentPassword" placeholder="Sua senha da ferramenta" />
-        <p class="hint">Por segurança, digite sua senha atual para autorizar as alterações de credenciais.</p>
-        
-        <button type="button" id="btnSalvar" onclick="salvarCredenciais()">✓ Salvar Alterações</button>
-      </div>
-
-      <!-- Segurança e Logout -->
-      <div class="section">
-        <h2>🔐 Segurança e Sessão</h2>
-        <div class="action-group">
-          <div class="action-item">
-            <button type="button" class="secondary" onclick="window.location.href='/change-password.html'">🔑 Mudar Senha Pessoal</button>
-            <p class="hint">Atualize sua senha de login periodicamente para manter sua conta segura.</p>
-          </div>
-          <div class="action-item">
-            <button type="button" class="secondary btn-danger" onclick="logout()">🚪 Sair da Conta (Logout)</button>
-            <p class="hint">Encerre sua sessão com segurança neste dispositivo ao terminar de usar a ferramenta.</p>
-          </div>
+        <div>
+          <label style="margin-top: 0;">Sessão</label>
+          <button type="button" class="secondary btn-danger" onclick="logout()" style="width: 100%; text-align: left; margin-top: 0.3rem;">🚪 Sair da Conta (Logout)</button>
+          <p class="hint">Encerre sua sessão com segurança neste dispositivo.</p>
         </div>
       </div>
 
-      <div id="message" class="message" style="display:none;"></div>
+      <!-- MODAL DE CREDENCIAIS (POP-UP) -->
+  <div id="credModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Atualizar Credenciais</h3>
+        <button class="modal-close" onclick="closeCredModal()" title="Fechar">✖</button>
+      </div>
+      
+      <label for="jiraToken" style="margin-top: 0;">Novo Token Jira</label>
+      <input type="password" id="jiraToken" placeholder="Cole seu novo token da API do Jira" autocomplete="off" />
+      
+      <label for="geminiToken">Nova Chave de API Gemini (IA)</label>
+      <input type="password" id="geminiToken" placeholder="Cole sua chave (AIzaSy...)" autocomplete="off" />
+      <p class="hint" style="margin-top: 4px;">Obtenha a chave no <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent);">Google AI Studio</a>.</p>
+
+      <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+        <label for="currentPassword" style="margin-top: 0; color: #d32f2f;">Senha Atual (Obrigatória)</label>
+        <input type="password" id="currentPassword" placeholder="Digite sua senha da ferramenta" autocomplete="off" />
+        <p class="hint" style="margin-top: 4px;">Necessária para autorizar as alterações acima.</p>
+
+        <!-- 🛡️ NOVO: CAMPO DE MFA (Oculto por padrão) -->
+        <div id="mfaGroupModal" style="display: none; margin-top: 1rem;">
+          <label for="mfaCodeModal" style="margin-top: 0; color: #d32f2f;">Código MFA (Autenticador)</label>
+          <input type="text" id="mfaCodeModal" placeholder="Ex: 123456" autocomplete="off" maxlength="6" pattern="\d*" />
+          <p class="hint" style="margin-top: 4px;">Sua conta possui autenticação em dois fatores ativa. Insira o código do seu app.</p>
+        </div>
+      </div>
+      
+      
+      <!-- Mensagem de erro exclusiva do Modal -->
+      <div id="modalMessage" class="message" style="display:none; margin-top: 16px;"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary" onclick="closeCredModal()" style="margin-top: 0;">Cancelar</button>
+        <button type="button" id="btnSalvar" onclick="salvarCredenciais()" style="margin-top: 0;">✓ Salvar</button>
+      </div>
     </div>
-    <div id="loading" style="text-align: center; color: var(--text-muted);">Carregando seus dados...</div>
+  </div>
+      
+      <!-- Mensagem global da tela -->
+      <div id="message" class="message" style="display:none; margin-top: 1rem;"></div>
+    </div>
+
   </div>
 
   <script>
+
+    // ===== CONTROLE DE TEMA (DARK MODE) =====
+    function applyThemeLabel() {
+      const atual = document.documentElement.getAttribute('data-theme') || 'light';
+      const btn = document.getElementById('themeToggle');
+      if (btn) btn.textContent = atual === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro';
+    }
+
+    function toggleTheme() {
+      const atual = document.documentElement.getAttribute('data-theme') || 'light';
+      const novo = atual === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', novo);
+      try { localStorage.setItem('jiraTool.theme', novo); } catch (e) {}
+      applyThemeLabel();
+    }
+
+    // Chama a label assim que a página carrega
+    document.addEventListener('DOMContentLoaded', () => {
+      applyThemeLabel();
+      carregarPerfil();
+    });
+    
     const contentDiv = document.getElementById('content');
     const loadingDiv = document.getElementById('loading');
     const messageDiv = document.getElementById('message');
@@ -137,7 +214,11 @@
           window.location.href = '/change-password.html?forced=1'; 
           return; 
         }
-        
+        // 💡 Exibe o campo de MFA no modal apenas se o usuário tiver configurado
+        isMfaEnabledGlobal = user.mfaEnabled;
+        if (isMfaEnabledGlobal) {
+          document.getElementById('mfaGroupModal').style.display = 'block';
+        }
         // Populando dados organizadamente
         document.getElementById('name').value = user.name || '-';
         document.getElementById('jiraEmail').value = user.jiraEmail || '-';
@@ -151,22 +232,57 @@
       }
     }
 
+   // ===== CONTROLE DO MODAL DE CREDENCIAIS =====
+    function openCredModal() {
+      document.getElementById('credModal').style.display = 'flex';
+      // Limpa os campos por segurança sempre que o modal abre
+      document.getElementById('jiraToken').value = '';
+      document.getElementById('geminiToken').value = '';
+      document.getElementById('currentPassword').value = '';
+      document.getElementById('mfaCodeModal').value = ''; // 💡 Limpa o MFA
+      document.getElementById('modalMessage').style.display = 'none';
+      document.getElementById('jiraToken').focus();
+    }
+
+    function closeCredModal() {
+      document.getElementById('credModal').style.display = 'none';
+    }
+
+    function showModalMessage(text, type = 'error') {
+      const msgDiv = document.getElementById('modalMessage');
+      msgDiv.textContent = text;
+      msgDiv.className = `message ${type}`;
+      msgDiv.style.display = 'block';
+    }
+
+    // ===== LÓGICA DE SALVAMENTO COM VALIDAÇÃO =====
     async function salvarCredenciais() {
       const jiraToken = document.getElementById('jiraToken').value.trim();
       const geminiToken = document.getElementById('geminiToken').value.trim();
       const currentPassword = document.getElementById('currentPassword').value;
+      const mfaCode = document.getElementById('mfaCodeModal').value.trim();
       
+      // 1. Validação: A Senha atual é estritamente obrigatória
       if (!currentPassword) { 
-        showMessage('Senha atual é obrigatória para atualizar dados.', 'error'); 
+        showModalMessage('A senha atual é obrigatória para autorizar a troca.', 'error'); 
         return; 
       }
 
+      // 🛡️ Validação Frontend de MFA
+      if (isMfaEnabledGlobal && !mfaCode) {
+        showModalMessage('O código do seu Autenticador (MFA) é obrigatório.', 'error');
+        return;
+      }
+
+      // 2. Validação: Pelo menos UM dos tokens precisa estar preenchido
       if (!jiraToken && !geminiToken) {
-        showMessage('Informe ao menos um novo token (Jira ou Gemini) para atualizar.', 'error');
+        showModalMessage('Preencha o Token do Jira ou a Chave do Gemini para atualizar.', 'error');
         return;
       }
       
       document.getElementById('btnSalvar').disabled = true;
+      document.getElementById('btnSalvar').textContent = 'Salvando...';
+
       try {
         const resp = await fetch('/api/auth/update-profile', {
           method: 'POST',
@@ -174,25 +290,27 @@
           body: JSON.stringify({ 
             jiraToken: jiraToken || undefined, 
             geminiToken: geminiToken || undefined, 
-            currentPassword 
+            currentPassword,
+            mfaCode: mfaCode || undefined // 💡 Envia o MFA pro backend
           }),
         });
         
         const result = await resp.json();
         
         if (!resp.ok) { 
-          showMessage(result.error || 'Erro ao atualizar credenciais.', 'error'); 
+          showModalMessage(result.error || 'Erro ao atualizar credenciais.', 'error'); 
           return; 
         }
         
-        showMessage('✓ Credenciais atualizadas com sucesso!', 'success');
-        document.getElementById('currentPassword').value = '';
-        document.getElementById('jiraToken').value = '';
-        document.getElementById('geminiToken').value = '';
+        // Se deu sucesso, fecha o modal e exibe a mensagem de sucesso na tela principal
+        closeCredModal();
+        showMessage('✓ Credenciais atualizadas e criptografadas com sucesso!', 'success');
+        
       } catch (error) { 
-        showMessage('Erro crítico ao comunicar com o servidor.', 'error'); 
+        showModalMessage('Erro crítico ao comunicar com o servidor.', 'error'); 
       } finally { 
         document.getElementById('btnSalvar').disabled = false; 
+        document.getElementById('btnSalvar').textContent = '✓ Salvar';
       }
     }
 

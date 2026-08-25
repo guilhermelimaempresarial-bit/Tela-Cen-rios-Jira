@@ -82,6 +82,12 @@ function addLog(msg) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+// 💡 UX: Função centralizada para limpar o log antes de novas execuções
+function clearLog() {
+  const logEl = document.getElementById('log');
+  if (logEl) logEl.textContent = '';
+}
+
 async function jiraCall(method, endpoint, body) {
   const resp = await fetch('/api/jira', {
     method: 'POST',
@@ -314,7 +320,15 @@ function parseEntrada(texto) {
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
     try {
       let data = JSON.parse(trimmed);
+      
+      // 💡 HIGIENIZAÇÃO SÊNIOR: Extrai o array caso o JSON possua envelopamento
+      if (data && !Array.isArray(data)) {
+        data = data.cenarios || data.scenarios || data.data || [data];
+      }
+      
+      // Validação final de Array
       if (!Array.isArray(data)) data = [data];
+
       const cenarios = data.map((c, i) => normalizarJson(c, i + 1, warnings));
       return { cenarios, warnings, origem: 'json' };
     } catch (e) {
@@ -349,15 +363,13 @@ function normalizarJson(c, autoIdx, warnings) {
   return cen;
 }
 
+// 💡 ARQUITETURA LIMPA: Lê diretamente o campo de texto/JSON sem checar abas
 function coletarCenarios() {
-  const modeElement = document.querySelector('input[name="inputMode"]:checked');
-  if (!modeElement) return { cenarios: [], warnings: [], origem: 'nenhum' };
-  
-  const mode = modeElement.value;
-  if (mode === 'form') return { cenarios: coletarFormScenarios(), warnings: [], origem: 'form' };
-  
   const cenariosInput = document.getElementById('cenarios');
-  if (!cenariosInput) return { cenarios: [], warnings: [], origem: 'nenhum' };
+  
+  if (!cenariosInput || !cenariosInput.value.trim()) {
+    return { cenarios: [], warnings: [], origem: 'nenhum' };
+  }
   
   return parseEntrada(cenariosInput.value);
 }
@@ -864,6 +876,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   if (!window.location.pathname.includes('login.html')) {
     await checkSession();
+    carregarBasesConhecimento();
   }
 
   // 💡 RESTAURADO: Ouvintes de evento do Multi-Select de Categorias
@@ -957,8 +970,8 @@ async function criar() {
   const btn = document.getElementById('btnCriar');
   if (btn) btn.disabled = true;
   
-  const logEl = document.getElementById('log');
-  if (logEl) logEl.textContent = '';
+  // 💡 Limpa as execuções antigas antes de buscar
+  clearLog();
 
   const parentKey = document.getElementById('parentKey')?.value.trim() || '';
   const issueType = document.getElementById('issueType')?.value.trim() || '';
@@ -1116,6 +1129,9 @@ async function carregarSubtasksOrigem() {
   const mode = (toggleEl && toggleEl.checked) ? 'lista' : 'origem';
   let subtaskKeys = [];
 
+  // 💡 Limpa as execuções antigas antes de buscar
+  clearLog();
+
   if (mode === 'origem') {
     const sourceParent = document.getElementById('sourceParentKey')?.value.trim();
     if (!sourceParent) { addLog('❌ ERRO: Informe a História Origem (ex: COR-10179)'); return; }
@@ -1220,8 +1236,8 @@ async function mover() {
   const btn = document.getElementById('btnMover');
   if (btn) btn.disabled = true;
   
-  const logEl = document.getElementById('log');
-  if (logEl) logEl.textContent = '';
+  // 💡 Limpa as execuções antigas antes de buscar
+  clearLog();
 
   const targetParent = document.getElementById('targetParentKey')?.value.trim();
   if (!targetParent) { addLog('❌ ERRO: Informe a Nova História Pai de Destino (ex: COR-10200)'); if (btn) btn.disabled = false; return; }
@@ -1364,6 +1380,9 @@ async function carregarSubtasksStatusV2() {
   const toggleEl = document.getElementById('statusModeToggleV2');
   const mode = (toggleEl && toggleEl.checked) ? 'lista' : 'origem';
   let subtaskKeys = [];
+
+  // 💡 Limpa as execuções antigas antes de buscar
+  clearLog();
 
   if (mode === 'origem') {
     const sourceParent = document.getElementById('statusSourceParentKeyV2')?.value.trim();
@@ -1602,8 +1621,8 @@ async function alterarV2() {
   const btn = document.getElementById('btnAlterarV2');
   if (btn) btn.disabled = true;
   
-  const logEl = document.getElementById('log');
-  if (logEl) logEl.textContent = '';
+  // 💡 Limpa as execuções antigas antes de buscar
+  clearLog();
 
   const alvoSelect = document.getElementById('statusAlvoV2');
   if (!alvoSelect) return;
@@ -1717,24 +1736,126 @@ function removeIAImage() {
   if (container) container.style.display = 'none';
 }
 
+let userKnowledgeBases = [];
+let activeMDContent = '';
+
+// ===== GERENCIAMENTO DE BASES .MD (SUPABASE) =====
+async function carregarBasesConhecimento() {
+  const select = document.getElementById('mdBaseSelect');
+  if (!select) return;
+
+  try {
+    const res = await fetch('/api/ai/knowledge-bases');
+    const data = await res.json();
+
+    if (res.ok && data.bases) {
+      userKnowledgeBases = data.bases;
+      select.innerHTML = '<option value="">📚 Nenhuma base de regras (.md) selecionada</option>';
+      
+      userKnowledgeBases.forEach(b => {
+        select.innerHTML += `<option value="${b.id}">${escapeHtml(b.title)}</option>`;
+      });
+    }
+  } catch (err) {
+    console.error('Falha ao buscar bases .md:', err);
+  }
+}
+
+function selecionarBaseConhecimento() {
+  const select = document.getElementById('mdBaseSelect');
+  const selectedId = select?.value;
+
+  if (!selectedId) {
+    activeMDContent = '';
+    return;
+  }
+
+  const base = userKnowledgeBases.find(b => b.id === selectedId);
+  activeMDContent = base ? base.content : '';
+  if (base) addLog(`📚 Base de conhecimento '${base.title}' ativada para os próximos prompts.`);
+}
+
+async function uploadNovaBaseMD(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const content = e.target.result;
+    
+    try {
+      const res = await fetch('/api/ai/knowledge-bases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: file.name, content })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      addLog(`✅ Base '${file.name}' salva com sucesso na sua conta!`);
+      await carregarBasesConhecimento();
+      
+      document.getElementById('mdBaseSelect').value = data.base.id;
+      selecionarBaseConhecimento();
+    } catch (err) {
+      addLog(`❌ Erro ao salvar .md: ${err.message}`);
+    }
+  };
+
+  reader.readAsText(file);
+}
+
+async function excluirBaseSelecionada() {
+  const select = document.getElementById('mdBaseSelect');
+  const selectedId = select?.value;
+
+  if (!selectedId) {
+    alert('Selecione uma base na lista para excluir.');
+    return;
+  }
+
+  if (confirm('Deseja realmente excluir este arquivo .md da sua conta?')) {
+    try {
+      const res = await fetch(`/api/ai/knowledge-bases/${selectedId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erro na exclusão');
+
+      addLog('🗑️ Base de conhecimento removida.');
+      activeMDContent = '';
+      await carregarBasesConhecimento();
+    } catch (err) {
+      addLog(`❌ Erro ao excluir: ${err.message}`);
+    }
+  }
+}
+
 async function gerarCenariosIA() {
   const promptInput = document.getElementById('aiPrompt');
   const btn = document.getElementById('btnIA');
   const boxCenarios = document.getElementById('cenarios');
+  const modelSelect = document.getElementById('aiModelSelect');
   
-  // Valida se o QA digitou texto ou anexou imagem
-  if (!promptInput.value.trim() && !currentIAImage) {
-    addLog('❌ ERRO: Digite um prompt ou anexe um arquivo para a IA.');
+  if (!promptInput.value.trim() && !currentIAImage && !activeMDContent) {
+    addLog('❌ ERRO: Digite um prompt, anexe uma imagem/PDF ou selecione uma base de regras .md.');
     return;
   }
 
+  // 💡 Limpa as execuções antigas antes de começar
+  clearLog();
+
   btn.disabled = true;
   btn.textContent = '⏳ Pensando...';
-  addLog('🪄 Solicitando cenários para a IA...');
+  addLog('⏳ Solicitando cenários para a IA...');
 
   try {
-    // 💡 MÁGICA: Empacota o texto e a imagem em Base64
-    const payload = { promptUser: promptInput.value };
+    const selectedModel = modelSelect ? modelSelect.value : 'gemini-3.6-flash';
+
+    const payload = { 
+      promptUser: promptInput.value,
+      modelTarget: selectedModel,
+      contextMarkdown: activeMDContent
+    };
+    
     if (currentIAImage) payload.image = currentIAImage;
 
     const res = await fetch('/api/ai/generate', {
@@ -1747,13 +1868,12 @@ async function gerarCenariosIA() {
     if (!res.ok) throw new Error(data.error);
 
     boxCenarios.value = JSON.stringify(data.cenarios, null, 2);
-    addLog(`✅ IA gerou ${data.cenarios.length} cenário(s) com sucesso!`);
+    addLog(`✅ IA (${selectedModel}) gerou ${data.cenarios.length} cenário(s) com sucesso!`);
     
     preview(); 
-    
     promptInput.value = ''; 
     autoResizeIA(promptInput);
-    removeIAImage(); // Limpa o anexo da tela após sucesso
+    removeIAImage();
 
   } catch (error) {
     addLog(`❌ ERRO IA: ${error.message}`);

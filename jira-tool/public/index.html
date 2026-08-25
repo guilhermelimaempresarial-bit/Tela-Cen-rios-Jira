@@ -48,11 +48,11 @@
   <button class="tab-btn" onclick="switchTab('tab-status-v2', this)">🔄 Alterar Status</button>
 </div>
 
-<!-- ABA 1: CRIAR CENÁRIOS (v2) -->
+<!-- ABA 1: CRIAR CENÁRIOS -->
 <div id="tab-criar" class="tab-content active">
   <div class="card">
     
-    <!-- 💡 ROW DOS INPUTS SUPERIORES (FECHAMENTO CORRIGIDO) -->
+    <!-- ROW DOS INPUTS SUPERIORES -->
     <div class="row">
       <div>
         <label for="parentKey">Issue Pai (História)</label>
@@ -74,7 +74,6 @@
           <option value="aprovado">Aprovado</option>
         </select>
       </div>
-      <!-- CAMPO CUSTOMIZADO: Categorias -->
       <div>
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
           <label style="margin-bottom: 0;">Categorias</label>
@@ -91,7 +90,6 @@
         <p class="hint">Clique para buscar ou selecione as categorias desejadas.</p>
       </div>
     </div> <!-- FECHAMENTO CORRETO DA .row -->
-
     <!-- CONFIGURAÇÃO DE SEÇÕES -->
     <div class="card" id="sectionConfigCard" style="margin-top:1rem; margin-bottom:0; background: var(--surface-2);">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem;">
@@ -146,43 +144,43 @@
         <p class="hint">Esses nomes serão usados na pré-visualização e na descrição criada no Jira. O parser continua aceitando sinônimos antigos.</p>
       </div>
     </div>
-
-    <label>Modo de entrada</label>
-    <div class="radio-group">
-      <label>
-        <input type="radio" name="inputMode" value="texto" checked onclick="toggleInputMode()">
-        📝 Texto livre
-      </label>
-      <label>
-        <input type="radio" name="inputMode" value="form" onclick="toggleInputMode()">
-        🧩 Formulário estruturado
-      </label>
-    </div>
-
+  
     <!-- MODO TEXTO LIVRE -->
-    <div id="modeTexto" style="display: flex; flex-direction: column; gap: 2.5rem; margin-top: 1.5rem;">
-
-   <!-- MODO TEXTO LIVRE -->
-    <div id="modeTexto" style="display: flex; flex-direction: column; gap: 2.5rem; margin-top: 1.5rem;">
+    <div id="modeTexto" style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
       
-      <!-- ✨ ASSISTENTE DE IA MOVIDO PARA O TOPO -->
+     <!-- ASSISTENTE DE IA COM GERENCIADOR .MD -->
       <div style="background: var(--surface-2); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 4px 12px var(--shadow);">
-        <label style="margin-top: 0; font-size: 1rem;">✨ Assistente de IA Generativa</label>
         
-        <div class="ai-input-wrapper" style="margin-top: 1rem;">
+        <!-- Cabeçalho limpo, sem o seletor de IA -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <label style="margin-top: 0; font-size: 1rem;">✨ Assistente de IA Generativa</label>
+        </div>
+        
+        <!-- GERENCIADOR DE BASES DE CONHECIMENTO (.MD) -->
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; flex-wrap: wrap;">
+          <select id="mdBaseSelect" onchange="selecionarBaseConhecimento()" style="flex: 1; min-width: 200px; margin-top: 0; padding: 0.4rem; font-size: 0.8rem; background: var(--surface);">
+            <option value="">📚 Nenhuma base de regras (.md) selecionada</option>
+          </select>
+
+          <label class="theme-toggle" style="margin: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem;" title="Cadastrar arquivo .md no banco">
+            📤 Cadastrar .md
+            <input type="file" id="mdFileInput" accept=".md,.txt" style="display: none;" onchange="uploadNovaBaseMD(event)">
+          </label>
+
+          <button type="button" class="secondary small" onclick="excluirBaseSelecionada()" title="Excluir base selecionada">🗑️</button>
+        </div>
+
+        <div class="ai-input-wrapper" style="margin-top: 0.75rem;">
           <textarea id="aiPrompt" oninput="autoResizeIA(this)" placeholder="Ex: Crie 3 cenários... (Dica: Dê Ctrl+V ou arraste uma Imagem/PDF aqui)"></textarea>
           <button class="small" id="btnIA" onclick="gerarCenariosIA()">Gerar com IA ✨</button>
         </div>
 
-        <!-- Container oculto que vai mostrar a miniatura do arquivo -->
         <div id="aiImagePreviewContainer" style="display: none; margin-top: 1rem; position: relative; width: max-content;">
-          <!-- Para Imagens -->
-          <img id="aiImagePreview" src="" alt="Preview" style="display: none; max-height: 80px; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px var(--shadow);">
-          <!-- Para PDFs -->
+          <img id="aiImagePreview" src="" alt="Preview" style="display: none; max-height: 80px; border-radius: 4px;">
           <div id="aiPdfPreview" style="display: none; padding: 0.5rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; color: #0052cc; font-weight: 600;">
             📄 PDF Anexado
           </div>
-          <button class="del-btn" onclick="removeIAImage()" style="position: absolute; top: -8px; right: -8px; padding: 2px 6px; font-size: 12px; border-radius: 50%; cursor: pointer;" title="Remover anexo">✖</button>
+          <button class="del-btn" onclick="removeIAImage()" style="position: absolute; top: -8px; right: -8px; padding: 2px 6px; font-size: 12px; border-radius: 50%;" title="Remover anexo">✖</button>
         </div>
       </div>
 
@@ -191,24 +189,10 @@
         <div id="colInput" style="display: none;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <label for="cenarios" style="margin-top:0;">Cenários (texto livre / Gherkin / JSON)</label>
-            <button class="secondary small" onclick="toggleFullscreen('colInput', this)" title="Expandir/recolher o editor de texto">⛶ Expandir editor</button>
+            <button class="secondary small" onclick="toggleFullscreen('colInput', this)">⛶ Expandir editor</button>
           </div>
 
-          <textarea id="cenarios" oninput="onTextInput()" placeholder="CT-01: Filtro avançado exibido na tela
-Pré-condição:
-Usuário logado no Certifica+, tela de Minhas Conexões acessada.
-Ação:
-Abrir os filtros avançados
-Resultado Esperado:
-Exibe 4 opções"></textarea>
-          
-          <div class="format-help">
-            <strong>Formatos aceitos (bem flexíveis):</strong><br>
-            • Título opcional: <code>CT-01:</code>, <code>Cenário:</code>, <code>1.</code> ou nada (gera <code>CT-01</code> automático).<br>
-            • Seções por nome ou sinônimos: <code>Pré-condição</code>/<code>Contexto</code>/<code>Dado</code>, <code>Ação</code>/<code>Passos</code>/<code>Quando</code>, <code>Resultado Esperado</code>/<code>Esperado</code>/<code>Então</code>.<br>
-            • Separe cenários com linha em branco, <code>---</code> ou novo título.<br>
-            • Pode colar um <code>JSON</code> (array de cenários) diretamente.
-          </div>
+          <textarea id="cenarios" oninput="onTextInput()" placeholder="CT-01: Título do Cenário..."></textarea>
         </div>
 
         <!-- COLUNA DIREITA: PRÉ-VISUALIZAÇÃO (Toma 100% da largura automaticamente) -->
@@ -216,9 +200,8 @@ Exibe 4 opções"></textarea>
           <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
             <label style="margin-top:0;">Pré-visualização</label>
             <div class="toolbar" style="margin-top:0;">
-              <!-- 💡 NOVO BOTÃO: Alterna o editor de texto livre -->
-              <button class="secondary small" id="btnToggleInput" onclick="toggleInputEditor()" title="Mostrar ou ocultar o campo de texto livre">📝 Mostrar Editor de Texto</button>
-              <button class="secondary small" onclick="toggleFullscreen('colPreview', this)" title="Expandir/recolher a pré-visualização">⛶ Expandir editor</button>
+              <button class="secondary small" id="btnToggleInput" onclick="toggleInputEditor()">📝 Mostrar Editor de Texto</button>
+              <button class="secondary small" onclick="toggleFullscreen('colPreview', this)">⛶ Expandir editor</button>
               <button class="secondary small" onclick="preview()">🔍 Pré-visualizar</button>
               <button class="secondary small" onclick="toggleJsonView()">{ } Ver JSON</button>
               <button class="secondary small" onclick="copyJson()">📋 Copiar JSON</button>
@@ -231,18 +214,11 @@ Exibe 4 opções"></textarea>
           <div id="summaryBar" class="summary-bar"></div>
         </div>
       </div>
+    </div> <!-- FECHA #modeTexto -->
 
-    <!-- MODO FORMULÁRIO ESTRUTURADO -->
-    <div id="modeForm" style="margin-top: 1rem; display:none;">
-      <div id="formScenarios"></div>
-      <button class="secondary" onclick="addFormScenario()" style="margin-top:0.5rem;">➕ Adicionar cenário</button>
-    </div>
-
-    <button id="btnCriar" onclick="criar()">Criar Cenários</button>
-  </div>
-</div>
-</div>
-</div>
+    <button id="btnCriar" onclick="criar()" style="margin-top: 1.5rem;">Criar Cenários</button>
+  </div> <!-- FECHA .card -->
+</div> <!-- FECHA #tab-criar -->
 
 <!-- ABA 2: MOVER CENÁRIOS -->
 <div id="tab-mover" class="tab-content">
