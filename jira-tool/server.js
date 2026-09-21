@@ -339,8 +339,8 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
     }
 
     // 💡 Usa as versões oficiais da Google para evitar alucinações
-    const allowedModels = ['gemini-3.7-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
-    const selectedModel = allowedModels.includes(modelTarget) ? modelTarget : 'gemini-3.7-flash';
+    const allowedModels = ['gemini-3.8-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+    const selectedModel = allowedModels.includes(modelTarget) ? modelTarget : 'gemini-3.8-flash';
 
     let baseSystemPrompt = `Você é um Analista de QA Sênior. 
     Crie cenários de teste estruturados baseados no pedido do usuário, imagens/documentos e regras fornecidas.
