@@ -1848,7 +1848,7 @@ async function gerarCenariosIA() {
   addLog('⏳ Solicitando cenários para a IA...');
 
   try {
-    const selectedModel = modelSelect ? modelSelect.value : 'gemini-3.8-flash';
+    const selectedModel = modelSelect ? modelSelect.value : 'gemini-3.5-flash-lite';
 
     const payload = { 
       promptUser: promptInput.value,
