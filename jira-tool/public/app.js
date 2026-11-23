@@ -876,6 +876,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   if (!window.location.pathname.includes('login.html')) {
     await checkSession();
+    carregarModelosGemini();
     carregarBasesConhecimento();
   }
 
@@ -1740,6 +1741,31 @@ let userKnowledgeBases = [];
 let activeMDContent = '';
 
 // ===== GERENCIAMENTO DE BASES .MD (SUPABASE) =====
+async function carregarModelosGemini() {
+  const select = document.getElementById('aiModelSelect');
+  if (!select) return;
+
+  try {
+    const res = await fetch('/api/ai/models');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao carregar modelos');
+
+    const savedModel = localStorage.getItem('jiraTool.geminiModel');
+    const selectedModel = data.models.includes(savedModel) ? savedModel : data.selected;
+    select.innerHTML = '';
+    data.models.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      option.selected = model === selectedModel;
+      select.appendChild(option);
+    });
+    select.onchange = () => localStorage.setItem('jiraTool.geminiModel', select.value);
+  } catch (error) {
+    console.error('Falha ao carregar modelos Gemini:', error);
+  }
+}
+
 async function carregarBasesConhecimento() {
   const select = document.getElementById('mdBaseSelect');
   if (!select) return;

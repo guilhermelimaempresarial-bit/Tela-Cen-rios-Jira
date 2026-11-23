@@ -193,6 +193,24 @@
     </div>
     <div id="alert" class="alert"></div>
 
+    <div class="card" style="margin-bottom:20px;">
+      <h2 style="margin-top:0; color:var(--text-strong);">🤖 Versões do Gemini</h2>
+      <p class="hint">Adicione os nomes das versões disponíveis na API. Cada usuário poderá escolher uma delas ao gerar cenários.</p>
+      <div class="row" style="align-items:end;">
+        <div>
+          <label for="geminiModelsText">Versões disponíveis</label>
+          <textarea id="geminiModelsText" rows="4" placeholder="gemini-3.8-flash&#10;gemini-4-neon" style="margin-bottom:0;"></textarea>
+        </div>
+        <div>
+          <label for="geminiSelectedModel">Versão selecionada por padrão</label>
+          <select id="geminiSelectedModel" style="margin-bottom:0;"></select>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+        <button class="small" onclick="salvarModelosGemini()">Salvar versões</button>
+      </div>
+    </div>
+
     <div id="modalCriarUsuario"
       style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
       <div
@@ -276,6 +294,51 @@
       setAlert(`Senha de ${userName} resetada: ${result.tempPassword}`, 'success');
       await carregarUsuarios();
     }
+    async function carregarModelosGemini() {
+      try {
+        const resp = await fetch('/api/ai/models');
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error || 'Erro ao carregar modelos.');
+        document.getElementById('geminiModelsText').value = result.models.join('\n');
+        atualizarSelectModeloGemini(result.models, result.selected);
+      } catch (error) {
+        setAlert(error.message, 'error');
+      }
+    }
+    function atualizarSelectModeloGemini(models, selected) {
+      const select = document.getElementById('geminiSelectedModel');
+      select.innerHTML = '';
+      models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        option.selected = model === selected;
+        select.appendChild(option);
+      });
+    }
+    async function salvarModelosGemini() {
+      const models = document.getElementById('geminiModelsText').value
+        .split(/[\n,]+/)
+        .map(value => value.trim())
+        .filter(Boolean);
+      const resp = await fetch('/api/ai/models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models, selected: document.getElementById('geminiSelectedModel').value })
+      });
+      const result = await resp.json();
+      if (!resp.ok) { setAlert(result.error || 'Erro ao salvar modelos.', 'error'); return; }
+      atualizarSelectModeloGemini(result.models, result.selected);
+      document.getElementById('geminiModelsText').value = result.models.join('\n');
+      setAlert('Versões do Gemini atualizadas com sucesso.', 'success');
+    }
+    document.getElementById('geminiModelsText').addEventListener('input', () => {
+      const models = document.getElementById('geminiModelsText').value
+        .split(/[\n,]+/)
+        .map(value => value.trim())
+        .filter(Boolean);
+      if (models.length) atualizarSelectModeloGemini([...new Set(models)], document.getElementById('geminiSelectedModel').value);
+    });
     function abrirModalCriarUsuario() { document.getElementById('modalCriarUsuario').style.display = 'flex'; }
     function fecharModalCriarUsuario() { document.getElementById('modalCriarUsuario').style.display = 'none'; }
     async function criarNovoUsuario() {
@@ -293,7 +356,10 @@
     document.addEventListener('DOMContentLoaded', async () => {
       const resp = await fetch('/api/auth/session');
       const result = await resp.json();
-      if (result.authenticated && result.user.role === 'admin') carregarUsuarios();
+      if (result.authenticated && result.user.role === 'admin') {
+        carregarUsuarios();
+        carregarModelosGemini();
+      }
       else window.location.href = '/login.html';
     });
   </script>

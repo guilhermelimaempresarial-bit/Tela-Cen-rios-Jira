@@ -22,7 +22,7 @@
   </script>
 
   <!-- JS Modularizado (100% Vanilla) com Cache Busting -->
-  <script src="app.js?v=5" defer></script>
+  <script src="app.js?v=6" defer></script>
 </head>
 <body>
 
@@ -154,6 +154,10 @@
         <!-- Cabeçalho limpo, sem o seletor de IA -->
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
           <label style="margin-top: 0; font-size: 1rem;">✨ Assistente de IA Generativa</label>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <label for="aiModelSelect" style="margin:0; font-size:0.8rem;">Modelo Gemini</label>
+            <select id="aiModelSelect" style="margin:0; min-width:180px; padding:0.4rem; background:var(--surface);"></select>
+          </div>
         </div>
         
         <!-- GERENCIADOR DE BASES DE CONHECIMENTO (.MD) -->

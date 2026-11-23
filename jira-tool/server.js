@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 
 // 💡 ARQUITETURA SÊNIOR: Sai Mongoose, Entra Supabase SDK
 const { createClient } = require('@supabase/supabase-js');
@@ -21,6 +22,43 @@ const PORT = process.env.PORT || 3333;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'jira-tool-dev-secret-change-me';
 const TOKEN_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'jira-tool-token-key-32bytes-long';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'guilherme.lima@nimbi.com.br').trim().toLowerCase();
+const GEMINI_MODELS_CONFIG = path.join(__dirname, 'gemini-models.json');
+const DEFAULT_GEMINI_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-1.5-pro',
+  'gemini-2.0-flash'
+];
+
+function normalizeGeminiModelName(value) {
+  return String(value || '').trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 100);
+}
+
+function readGeminiModelsConfig() {
+  try {
+    if (!fs.existsSync(GEMINI_MODELS_CONFIG)) return { models: [...DEFAULT_GEMINI_MODELS], selected: DEFAULT_GEMINI_MODELS[0] };
+    const config = JSON.parse(fs.readFileSync(GEMINI_MODELS_CONFIG, 'utf8'));
+    const models = Array.isArray(config.models)
+      ? [...new Set(config.models.map(normalizeGeminiModelName).filter(Boolean))]
+      : [];
+    if (models.length === 0) return { models: [...DEFAULT_GEMINI_MODELS], selected: DEFAULT_GEMINI_MODELS[0] };
+    const selected = models.includes(config.selected) ? config.selected : models[0];
+    return { models, selected };
+  } catch (error) {
+    console.error('Erro ao ler configuração dos modelos Gemini:', error);
+    return { models: [...DEFAULT_GEMINI_MODELS], selected: DEFAULT_GEMINI_MODELS[0] };
+  }
+}
+
+function writeGeminiModelsConfig(config) {
+  const models = [...new Set((config.models || []).map(normalizeGeminiModelName).filter(Boolean))];
+  if (models.length === 0) throw new Error('Informe ao menos uma versão do Gemini.');
+  const selected = models.includes(config.selected) ? config.selected : models[0];
+  const tempFile = `${GEMINI_MODELS_CONFIG}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify({ models, selected }, null, 2), 'utf8');
+  fs.writeFileSync(GEMINI_MODELS_CONFIG, fs.readFileSync(tempFile), 'utf8');
+  fs.unlinkSync(tempFile);
+  return { models, selected };
+}
 
 // ==============================================================
 // ☁️ CONEXÃO COM O SUPABASE (POSTGRESQL)
@@ -270,6 +308,21 @@ app.post('/api/auth/logout', (req, res) => {
 // ==============================================================
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+// GET /api/ai/models -> Lista as versões Gemini disponíveis para o usuário
+app.get('/api/ai/models', requireAuth, (req, res) => {
+  res.json({ success: true, ...readGeminiModelsConfig() });
+});
+
+// PUT /api/ai/models -> Administrador atualiza as versões Gemini disponíveis
+app.put('/api/ai/models', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const config = writeGeminiModelsConfig(req.body || {});
+    res.json({ success: true, ...config });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // GET /api/ai/knowledge-bases -> Busca as bases .md cadastradas pelo QA
 app.get('/api/ai/knowledge-bases', requireAuth, async (req, res) => {
   try {
@@ -338,10 +391,10 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
       });
     }
 
-    // 💡 Usa as versões oficiais da Google para evitar alucinações
-    const allowedModels = ['gemini-3.5-flash-lite', 'gemini-1.5-pro', 'gemini-2.0-flash'];
-    const selectedModel = allowedModels.includes(
-      modelTarget) ? modelTarget : 'gemini-3.5-flash-lite';
+    const geminiConfig = readGeminiModelsConfig();
+    const selectedModel = geminiConfig.models.includes(modelTarget)
+      ? modelTarget
+      : geminiConfig.selected;
 
     let baseSystemPrompt = `Você é um Analista de QA Sênior. 
     Crie cenários de teste estruturados baseados no pedido do usuário, imagens/documentos e regras fornecidas.
