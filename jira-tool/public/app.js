@@ -1894,7 +1894,11 @@ async function gerarCenariosIA() {
     if (!res.ok) throw new Error(data.error);
 
     boxCenarios.value = JSON.stringify(data.cenarios, null, 2);
-    addLog(`✅ IA (${selectedModel}) gerou ${data.cenarios.length} cenário(s) com sucesso!`);
+    const usedModel = data.model || selectedModel;
+    if (usedModel !== selectedModel) {
+      addLog(`⚠️ ${selectedModel} estava indisponível; os cenários foram gerados com ${usedModel}.`);
+    }
+    addLog(`✅ IA (${usedModel}) gerou ${data.cenarios.length} cenário(s) com sucesso!`);
     
     preview(); 
     promptInput.value = ''; 

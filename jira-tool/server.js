@@ -307,6 +307,28 @@ app.post('/api/auth/logout', (req, res) => {
 // 🤖 ROTA DA INTELIGÊNCIA ARTIFICIAL (GEMINI E BASES .MD)
 // ==============================================================
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const GEMINI_RETRY_DELAY_MS = 2000;
+
+function isGeminiUnavailableError(error) {
+  return Number(error?.status) === 503 || /\b503\b|service unavailable/i.test(String(error?.message || ''));
+}
+
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function generateGeminiContentWithRetry(model, contentParts, modelName) {
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await model.generateContent(contentParts);
+    } catch (error) {
+      if (!isGeminiUnavailableError(error) || attempt === maxAttempts) throw error;
+      console.warn(`Modelo Gemini ${modelName} indisponível (503). Nova tentativa em 2 segundos.`);
+      await wait(GEMINI_RETRY_DELAY_MS);
+    }
+  }
+}
 
 // GET /api/ai/models -> Lista as versões Gemini disponíveis para o usuário
 app.get('/api/ai/models', requireAuth, (req, res) => {
@@ -413,10 +435,6 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
     }
 
     const userGenAI = new GoogleGenerativeAI(userCustomKey);
-    const model = userGenAI.getGenerativeModel({ 
-      model: selectedModel,
-      systemInstruction: baseSystemPrompt
-    });
 
     const contentParts = [
       `Pedido do usuário: ${promptUser || 'Analise o contexto fornecido e crie os cenários de teste.'}`
@@ -426,7 +444,33 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
       contentParts.push({ inlineData: { data: image.data, mimeType: image.mimeType } });
     }
 
-    const result = await model.generateContent(contentParts);
+    const fallbackModel = [
+      geminiConfig.selected,
+      DEFAULT_GEMINI_MODELS[0],
+      ...geminiConfig.models
+    ].find(modelName => modelName !== selectedModel && geminiConfig.models.includes(modelName));
+    let usedModel = selectedModel;
+    let result;
+
+    const selectedGeminiModel = userGenAI.getGenerativeModel({
+      model: selectedModel,
+      systemInstruction: baseSystemPrompt
+    });
+
+    try {
+      result = await generateGeminiContentWithRetry(selectedGeminiModel, contentParts, selectedModel);
+    } catch (error) {
+      if (!isGeminiUnavailableError(error) || !fallbackModel) throw error;
+
+      console.warn(`Modelo Gemini ${selectedModel} continua indisponível. Tentando fallback ${fallbackModel}.`);
+      usedModel = fallbackModel;
+      const fallbackGeminiModel = userGenAI.getGenerativeModel({
+        model: fallbackModel,
+        systemInstruction: baseSystemPrompt
+      });
+      result = await generateGeminiContentWithRetry(fallbackGeminiModel, contentParts, fallbackModel);
+    }
+
     let textoResposta = result.response.text();
 
     // 💡 HIGIENIZAÇÃO SÊNIOR: Procura onde o JSON realmente começa, ignorando "Aqui estão os cenários..."
@@ -449,7 +493,7 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
     // Garante que a saída final será SEMPRE um array
     if (!Array.isArray(cenariosJson)) cenariosJson = [];
 
-    res.json({ success: true, cenarios: cenariosJson });
+    res.json({ success: true, cenarios: cenariosJson, model: usedModel });
 
   } catch (error) {
     console.error('Erro na IA:', error);
@@ -458,6 +502,9 @@ app.post('/api/ai/generate', requireAuth, async (req, res) => {
     }
     if (error.status === 429 || error.message.includes('429')) {
       return res.status(429).json({ error: 'Limite de cota de requisições atingido. Aguarde um minuto ou mude para o modelo Flash.' });
+    }
+    if (isGeminiUnavailableError(error)) {
+      return res.status(503).json({ error: 'Os modelos Gemini estão temporariamente indisponíveis. Tente novamente em alguns instantes.' });
     }
     res.status(500).json({ error: `Falha na IA: ${error.message}` });
   }
