@@ -23,6 +23,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'jira-tool-dev-secret-chang
 const TOKEN_KEY = process.env.TOKEN_ENCRYPTION_KEY || 'jira-tool-token-key-32bytes-long';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'guilherme.lima@nimbi.com.br').trim().toLowerCase();
 const GEMINI_MODELS_CONFIG = path.join(__dirname, 'gemini-models.json');
+const GEMINI_MODELS_DB_KEY = 'gemini_models_config';
 const DEFAULT_GEMINI_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-1.5-pro',
@@ -58,6 +59,61 @@ function writeGeminiModelsConfig(config) {
   fs.writeFileSync(GEMINI_MODELS_CONFIG, fs.readFileSync(tempFile), 'utf8');
   fs.unlinkSync(tempFile);
   return { models, selected };
+}
+
+function normalizeGeminiModelsConfig(config) {
+  const models = [...new Set((config.models || []).map(normalizeGeminiModelName).filter(Boolean))];
+  if (models.length === 0) throw new Error('Informe ao menos uma versão do Gemini.');
+  const selected = models.includes(config.selected) ? config.selected : models[0];
+  return { models, selected };
+}
+
+async function readGeminiModelsConfigFromDatabase() {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', GEMINI_MODELS_DB_KEY)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Erro ao buscar versões Gemini no banco:', error.message);
+      return null;
+    }
+    if (!data?.value) return null;
+
+    const models = Array.isArray(data.value.models)
+      ? [...new Set(data.value.models.map(normalizeGeminiModelName).filter(Boolean))]
+      : [];
+    if (models.length === 0) return null;
+
+    const selected = models.includes(data.value.selected) ? data.value.selected : models[0];
+    return { models, selected };
+  } catch (error) {
+    console.error('Erro ao acessar versões Gemini no banco:', error.message);
+    return null;
+  }
+}
+
+async function readGeminiModelsConfigWithDatabase() {
+  const databaseConfig = await readGeminiModelsConfigFromDatabase();
+  if (databaseConfig) return databaseConfig;
+  return readGeminiModelsConfig();
+}
+
+async function saveGeminiModelsConfig(config) {
+  const normalized = normalizeGeminiModelsConfig(config);
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert({
+      key: GEMINI_MODELS_DB_KEY,
+      value: normalized,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'key' });
+
+  if (error) throw new Error(`Erro ao salvar versões Gemini no banco: ${error.message}`);
+  writeGeminiModelsConfig(normalized);
+  return normalized;
 }
 
 // ==============================================================
@@ -331,14 +387,15 @@ async function generateGeminiContentWithRetry(model, contentParts, modelName) {
 }
 
 // GET /api/ai/models -> Lista as versões Gemini disponíveis para o usuário
-app.get('/api/ai/models', requireAuth, (req, res) => {
-  res.json({ success: true, ...readGeminiModelsConfig() });
+app.get('/api/ai/models', requireAuth, async (_req, res) => {
+  const config = await readGeminiModelsConfigWithDatabase();
+  res.json({ success: true, ...config });
 });
 
 // PUT /api/ai/models -> Administrador atualiza as versões Gemini disponíveis
-app.put('/api/ai/models', requireAuth, requireAdmin, (req, res) => {
+app.put('/api/ai/models', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const config = writeGeminiModelsConfig(req.body || {});
+    const config = await saveGeminiModelsConfig(req.body || {});
     res.json({ success: true, ...config });
   } catch (error) {
     res.status(400).json({ error: error.message });
